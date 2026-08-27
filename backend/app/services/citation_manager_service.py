@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any, Dict, List, Optional
 import json
 import re
@@ -16,121 +14,74 @@ class CitationManagerService:
     """
     PaperAxiom Citation Manager.
 
-    Production-oriented academic citation and paper-analysis service.
-
     Responsibilities:
-        1. Retrieve bibliographic evidence.
-        2. Retrieve research evidence.
-        3. Extract and validate metadata.
-        4. Generate APA 7th and IEEE citations.
-        5. Generate an academic explanation.
-        6. Summarize research focus, methodology,
-           findings, contribution and citation context.
-        7. Keep paper-specific information evidence-grounded.
+        1. Retrieve bibliographic and research evidence.
+        2. Extract citation metadata from the paper evidence.
+        3. Generate APA 7th and IEEE citations.
+        4. Explain the paper in concise academic language.
+        5. Keep all paper-specific information evidence-grounded.
 
     Supports:
         - 1–10 papers
         - APA 7th
         - IEEE
         - research focus
-        - methodology
-        - findings
         - contribution
+        - methodology
+        - key findings
         - citation context
-        - academic explanation
+        - concise academic explanation
     """
-
-    # ============================================================
-    # CONFIGURATION
-    # ============================================================
-
-    MAX_PAPERS = 10
-
-    RETRIEVAL_LIMIT_PER_PAPER = 5
-
-    MAX_EVIDENCE_PER_PAPER = 25
-
-    MAX_SOURCE_CHARS = 24000
-
-    LLM_MAX_TOKENS = 2200
-
-    # ============================================================
-    # RETRIEVAL CATEGORIES
-    # ============================================================
 
     CATEGORIES = [
         (
             "Bibliographic Information",
             (
-                "exact paper title authors author names publication "
-                "year journal conference proceedings publisher "
-                "volume issue pages article number DOI doi identifier"
+                "paper title authors publication year journal "
+                "conference DOI publisher volume issue pages "
+                "article number citation reference"
             ),
         ),
         (
             "Research Focus",
             (
-                "research problem research question objective aim "
-                "purpose motivation topic scope background study"
+                "research problem research question objective "
+                "research aim motivation topic scope"
             ),
         ),
         (
             "Methodology",
             (
-                "method methodology research design experimental "
-                "setup procedure framework pipeline architecture "
-                "model algorithm preprocessing training validation "
-                "testing implementation"
-            ),
-        ),
-        (
-            "Dataset & Data",
-            (
-                "dataset data source population participants patients "
-                "samples sample size images records observations "
-                "annotations labels preprocessing train test "
-                "validation split"
-            ),
-        ),
-        (
-            "Models & Algorithms",
-            (
-                "model models algorithm algorithms architecture "
-                "machine learning deep learning neural network CNN "
-                "Transformer classifier segmentation detection "
-                "feature extraction optimization"
+                "method methodology architecture model algorithm "
+                "experimental setup research design procedure"
             ),
         ),
         (
             "Key Findings",
             (
-                "results findings performance evaluation accuracy "
-                "precision recall F1 AUC sensitivity specificity "
-                "Dice IoU statistical results conclusion"
+                "results findings performance evaluation metrics "
+                "accuracy precision recall F1 AUC conclusions"
             ),
         ),
         (
             "Contribution",
             (
-                "main contribution novelty innovation proposed "
-                "approach advancement significance original "
-                "contribution improvement"
+                "contribution novelty significance proposed approach "
+                "innovation advancement"
             ),
         ),
         (
             "Citation Context",
             (
-                "related work significance practical significance "
-                "theoretical significance field contribution "
-                "how this study should be cited"
+                "how this study contributes to the field "
+                "related work importance practical significance"
             ),
         ),
         (
-            "Limitations & Future Work",
+            "Limitations",
             (
-                "limitations weaknesses constraints challenges "
-                "failure cases generalization future work "
-                "recommendations unresolved problems"
+                "limitations weaknesses challenges constraints "
+                "failure cases unresolved issues"
             ),
         ),
     ]
@@ -141,29 +92,9 @@ class CitationManagerService:
 
     def __init__(self):
 
-        self.api_keys = list(
-            getattr(
-                settings,
-                "api_keys_list",
-                [],
-            )
-            or []
-        )
-
-        self.models = list(
-            getattr(
-                settings,
-                "models_list",
-                [],
-            )
-            or []
-        )
-
-        self.base_url = getattr(
-            settings,
-            "OPENROUTER_BASE_URL",
-            None,
-        )
+        self.api_keys = settings.api_keys_list
+        self.models = settings.models_list
+        self.base_url = settings.OPENROUTER_BASE_URL
 
     # ============================================================
     # NORMALIZE PAPER IDS
@@ -174,36 +105,25 @@ class CitationManagerService:
         paper_ids: List[int],
     ) -> List[int]:
 
-        normalized = []
+        result = []
 
         for value in paper_ids or []:
 
             try:
-
-                paper_id = int(
-                    value
-                )
-
+                paper_id = int(value)
             except (
                 TypeError,
                 ValueError,
             ):
-
                 continue
 
-            if (
-                paper_id > 0
-                and paper_id not in normalized
-            ):
+            if paper_id not in result:
+                result.append(paper_id)
 
-                normalized.append(
-                    paper_id
-                )
-
-        return normalized
+        return result
 
     # ============================================================
-    # CLEAN TEXT
+    # TEXT CLEANING
     # ============================================================
 
     def _clean_text(
@@ -214,348 +134,21 @@ class CitationManagerService:
         if value is None:
             return ""
 
-        text = str(
-            value
-        )
+        text = str(value)
 
         text = (
             text
-            .replace("\r\n", "\n")
-            .replace("\r", "\n")
-            .replace("\x00", " ")
+            .replace("\r", " ")
+            .replace("\n", " ")
         )
 
-        # Preserve paragraph boundaries.
-        lines = []
-
-        for line in text.split("\n"):
-
-            cleaned = " ".join(
-                line.split()
-            ).strip()
-
-            if cleaned:
-                lines.append(
-                    cleaned
-                )
-
-        return "\n".join(
-            lines
-        ).strip()
-
-    # ============================================================
-    # COMPACT TEXT
-    # ============================================================
-
-    def _compact_text(
-        self,
-        value: Any,
-    ) -> str:
-
-        return " ".join(
-            self._clean_text(
-                value
-            ).split()
-        ).strip()
-
-    # ============================================================
-    # EXTRACT RESULT LIST
-    # ============================================================
-
-    def _extract_results(
-        self,
-        result: Any,
-    ) -> List[Dict[str, Any]]:
-
-        if isinstance(
-            result,
-            list,
-        ):
-
-            return [
-                item
-                for item in result
-                if isinstance(
-                    item,
-                    dict,
-                )
-            ]
-
-        if isinstance(
-            result,
-            dict,
-        ):
-
-            for key in (
-                "results",
-                "evidence",
-                "documents",
-                "chunks",
-                "papers",
-                "data",
-            ):
-
-                value = result.get(
-                    key
-                )
-
-                if isinstance(
-                    value,
-                    list,
-                ):
-
-                    return [
-                        item
-                        for item in value
-                        if isinstance(
-                            item,
-                            dict,
-                        )
-                    ]
-
-            if self._extract_text(
-                result
-            ):
-
-                return [result]
-
-        return []
-
-    # ============================================================
-    # EXTRACT TEXT FROM RESULT
-    # ============================================================
-
-    def _extract_text(
-        self,
-        item: Dict[str, Any],
-    ) -> str:
-
-        for key in (
-            "text",
-            "content",
-            "chunk",
-            "page_content",
-            "document",
-            "body",
-            "snippet",
-        ):
-
-            value = item.get(
-                key
-            )
-
-            if isinstance(
-                value,
-                str,
-            ):
-
-                cleaned = self._clean_text(
-                    value
-                )
-
-                if cleaned:
-                    return cleaned
-
-        return ""
-
-    # ============================================================
-    # EXTRACT PAPER ID
-    # ============================================================
-
-    def _extract_paper_id(
-        self,
-        item: Dict[str, Any],
-    ) -> Optional[int]:
-
-        keys = [
-            "paper_id",
-            "document_id",
-            "source_paper_id",
-        ]
-
-        containers = [
-            item,
-            item.get("metadata") or {},
-            item.get("payload") or {},
-            item.get("meta") or {},
-        ]
-
-        for container in containers:
-
-            if not isinstance(
-                container,
-                dict,
-            ):
-                continue
-
-            for key in keys:
-
-                value = container.get(
-                    key
-                )
-
-                try:
-
-                    if value is not None:
-                        return int(
-                            value
-                        )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-
-                    continue
-
-        return None
-
-    # ============================================================
-    # EXTRACT PAPER TITLE
-    # ============================================================
-
-    def _extract_title(
-        self,
-        item: Dict[str, Any],
-    ) -> str:
-
-        keys = [
-            "title",
-            "paper_title",
-            "paperTitle",
-            "document_title",
-            "documentTitle",
-            "source_title",
-            "name",
-        ]
-
-        containers = [
-            item,
-            item.get("metadata") or {},
-            item.get("payload") or {},
-            item.get("meta") or {},
-        ]
-
-        for container in containers:
-
-            if not isinstance(
-                container,
-                dict,
-            ):
-                continue
-
-            for key in keys:
-
-                value = container.get(
-                    key
-                )
-
-                if value is None:
-                    continue
-
-                cleaned = self._clean_text(
-                    value
-                )
-
-                if cleaned:
-                    return cleaned
-
-        return ""
-
-    # ============================================================
-    # EXTRACT RELEVANCE SCORE
-    # ============================================================
-
-    def _score(
-        self,
-        item: Dict[str, Any],
-    ) -> float:
-
-        for key in (
-            "score",
-            "similarity",
-            "relevance_score",
-        ):
-
-            value = item.get(
-                key
-            )
-
-            try:
-                return float(
-                    value
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-
-                continue
-
-        return 0.0
-
-    # ============================================================
-    # DUPLICATE CHECK
-    # ============================================================
-
-    def _is_duplicate(
-        self,
-        text: str,
-        existing: List[str],
-    ) -> bool:
-
-        normalized = self._compact_text(
-            text
-        ).lower()
-
-        if not normalized:
-            return True
-
-        for old in existing:
-
-            old_normalized = (
-                self._compact_text(
-                    old
-                ).lower()
-            )
-
-            if not old_normalized:
-                continue
-
-            if normalized == old_normalized:
-                return True
-
-            if (
-                len(normalized) > 80
-                and len(old_normalized) > 80
-            ):
-
-                words_a = set(
-                    normalized.split()
-                )
-
-                words_b = set(
-                    old_normalized.split()
-                )
-
-                union = (
-                    words_a | words_b
-                )
-
-                if union:
-
-                    similarity = (
-                        len(
-                            words_a & words_b
-                        )
-                        / len(union)
-                    )
-
-                    if similarity >= 0.90:
-                        return True
-
-        return False
+        text = re.sub(
+            r"\s+",
+            " ",
+            text,
+        )
+
+        return text.strip()
 
     # ============================================================
     # RETRIEVE EVIDENCE
@@ -566,34 +159,17 @@ class CitationManagerService:
         paper_ids: List[int],
     ) -> Dict[int, List[Dict[str, Any]]]:
 
-        evidence = {
-            paper_id: []
-            for paper_id in paper_ids
-        }
+        evidence = {}
 
         for paper_id in paper_ids:
 
-            print(
-                "Citation Manager | "
-                f"Processing Paper {paper_id}"
-            )
+            chunks = []
 
-            selected = []
-
-            seen_texts = []
-
-            # ----------------------------------------------------
-            # Search all academic categories.
-            # ----------------------------------------------------
-
-            for category_name, query in (
-                self.CATEGORIES
-            ):
+            for category_name, query in self.CATEGORIES:
 
                 print(
                     "Citation Manager | "
-                    f"Paper {paper_id} | "
-                    f"Retrieving {category_name}"
+                    f"Retrieving: {query}"
                 )
 
                 try:
@@ -601,12 +177,8 @@ class CitationManagerService:
                     result = (
                         multi_document_service.search(
                             query=query,
-                            paper_ids=[
-                                paper_id
-                            ],
-                            limit_per_paper=(
-                                self.RETRIEVAL_LIMIT_PER_PAPER
-                            ),
+                            paper_ids=[paper_id],
+                            limit_per_paper=2,
                         )
                     )
 
@@ -614,30 +186,38 @@ class CitationManagerService:
 
                     print(
                         "Citation Manager | "
-                        f"Retrieval error | "
-                        f"Paper {paper_id} | "
-                        f"{category_name}: "
-                        f"{exc}"
+                        f"Retrieval error for "
+                        f"Paper {paper_id}: {exc}"
                     )
 
                     continue
 
-                candidates = (
-                    self._extract_results(
-                        result
+                candidates = []
+
+                if isinstance(
+                    result,
+                    dict,
+                ):
+
+                    candidates = (
+                        result.get("results")
+                        or result.get("papers")
+                        or result.get("evidence")
+                        or []
                     )
-                )
 
-                if not candidates:
+                elif isinstance(
+                    result,
+                    list,
+                ):
+
+                    candidates = result
+
+                if not isinstance(
+                    candidates,
+                    list,
+                ):
                     continue
-
-                # Strongest evidence first.
-                candidates.sort(
-                    key=self._score,
-                    reverse=True,
-                )
-
-                category_count = 0
 
                 for item in candidates:
 
@@ -647,112 +227,87 @@ class CitationManagerService:
                     ):
                         continue
 
-                    item_paper_id = (
-                        self._extract_paper_id(
-                            item
-                        )
-                    )
-
-                    # If metadata contains paper ID,
-                    # ensure it belongs to the requested paper.
-                    if (
-                        item_paper_id is not None
-                        and item_paper_id
-                        != paper_id
-                    ):
-                        continue
-
-                    text = self._extract_text(
-                        item
+                    text = self._clean_text(
+                        item.get("text")
+                        or item.get("content")
+                        or item.get("chunk")
+                        or ""
                     )
 
                     if not text:
                         continue
 
-                    if self._is_duplicate(
-                        text,
-                        seen_texts,
-                    ):
-                        continue
+                    enriched = dict(item)
 
-                    copied = dict(
-                        item
-                    )
-
-                    copied["text"] = text
-
-                    copied["category"] = (
+                    enriched["text"] = text
+                    enriched["category"] = (
                         category_name
                     )
 
-                    copied["score"] = (
-                        self._score(
-                            item
-                        )
+                    chunks.append(
+                        enriched
                     )
 
-                    title = (
-                        self._extract_title(
-                            item
-                        )
-                    )
-
-                    if title:
-                        copied[
-                            "paper_title"
-                        ] = title
-
-                    selected.append(
-                        copied
-                    )
-
-                    seen_texts.append(
-                        text
-                    )
-
-                    category_count += 1
-
-                    # Avoid flooding one category.
-                    if category_count >= 4:
-                        break
-
-                    if (
-                        len(selected)
-                        >= self.MAX_EVIDENCE_PER_PAPER
-                    ):
-                        break
-
-                if (
-                    len(selected)
-                    >= self.MAX_EVIDENCE_PER_PAPER
-                ):
-                    break
-
-            # ----------------------------------------------------
-            # Final strongest-evidence ordering.
-            # ----------------------------------------------------
-
-            selected.sort(
-                key=self._score,
-                reverse=True,
+            evidence[paper_id] = (
+                self._deduplicate(chunks)
             )
 
-            evidence[
-                paper_id
-            ] = selected[
-                :self.MAX_EVIDENCE_PER_PAPER
-            ]
-
             print(
-                "Citation Manager | "
+                "Citation Manager evidence | "
                 f"Paper {paper_id}: "
-                f"{len(evidence[paper_id])} evidence chunks"
+                f"{len(evidence[paper_id])} chunks"
             )
 
         return evidence
 
     # ============================================================
-    # EXTRACT METADATA
+    # DEDUPLICATE
+    # ============================================================
+
+    def _deduplicate(
+        self,
+        chunks: List[Any],
+    ) -> List[Dict[str, Any]]:
+
+        output = []
+        seen = set()
+
+        for item in chunks:
+
+            if not isinstance(
+                item,
+                dict,
+            ):
+                continue
+
+            text = self._clean_text(
+                item.get("text")
+                or item.get("content")
+                or item.get("chunk")
+                or ""
+            )
+
+            if not text:
+                continue
+
+            key = text[:700].lower()
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            copied = dict(item)
+            copied["text"] = text
+
+            output.append(
+                copied
+            )
+
+        return output
+
+    # ============================================================
+    # EXTRACT METADATA FROM RETRIEVED CHUNKS
     # ============================================================
 
     def _extract_metadata_from_chunks(
@@ -773,7 +328,7 @@ class CitationManagerService:
             "doi": "",
         }
 
-        field_aliases = {
+        possible_fields = {
             "title": [
                 "title",
                 "paper_title",
@@ -819,7 +374,6 @@ class CitationManagerService:
                 "pages",
                 "page",
                 "page_range",
-                "pageRange",
             ],
             "doi": [
                 "doi",
@@ -828,7 +382,7 @@ class CitationManagerService:
         }
 
         # --------------------------------------------------------
-        # 1. Structured metadata first.
+        # First inspect structured metadata
         # --------------------------------------------------------
 
         for chunk in chunks:
@@ -854,14 +408,12 @@ class CitationManagerService:
                 ):
                     continue
 
-                for field, aliases in (
-                    field_aliases.items()
-                ):
+                for field, keys in possible_fields.items():
 
                     if metadata[field]:
                         continue
 
-                    for key in aliases:
+                    for key in keys:
 
                         value = container.get(
                             key
@@ -870,181 +422,123 @@ class CitationManagerService:
                         if value is None:
                             continue
 
-                        cleaned = self._clean_text(
+                        value = self._clean_text(
                             value
                         )
 
-                        if cleaned:
-                            metadata[field] = (
-                                cleaned
-                            )
-
+                        if value:
+                            metadata[field] = value
                             break
 
         # --------------------------------------------------------
-        # 2. Collect text.
+        # Then inspect text itself
         # --------------------------------------------------------
 
         combined_text = "\n".join(
             self._clean_text(
-                item.get(
-                    "text",
-                    "",
-                )
+                item.get("text", "")
             )
             for item in chunks
-            if isinstance(
-                item,
-                dict,
-            )
+            if isinstance(item, dict)
         )
 
         if not combined_text:
             return metadata
 
-        # --------------------------------------------------------
-        # 3. DOI extraction.
-        # --------------------------------------------------------
-
+        # DOI
         if not metadata["doi"]:
 
             match = re.search(
-                r"(?:https?://doi\.org/|doi:\s*)?"
+                r"(?:https?://doi\.org/|doi:\s*)"
                 r"(10\.\d{4,9}/[-._;()/:A-Z0-9]+)",
                 combined_text,
                 flags=re.I,
             )
 
             if match:
-
-                doi = (
+                metadata["doi"] = (
                     match.group(1)
-                    .rstrip(
-                        ".,;:)]}"
-                    )
+                    .rstrip(".,;)")
                 )
 
-                metadata["doi"] = doi
-
-        # --------------------------------------------------------
-        # 4. Year extraction.
-        # --------------------------------------------------------
-
+        # Year
         if not metadata["year"]:
 
-            years = re.findall(
+            matches = re.findall(
                 r"\b(19\d{2}|20\d{2})\b",
                 combined_text,
             )
 
-            if years:
-
-                # Prefer a recent publication year,
-                # but stay within the paper evidence.
-                metadata["year"] = (
-                    years[0]
-                )
+            if matches:
+                metadata["year"] = matches[0]
 
         # --------------------------------------------------------
-        # 5. Label-based extraction.
+        # Look for common bibliographic labels
         # --------------------------------------------------------
 
         patterns = {
             "title": [
-                r"(?im)^\s*title\s*[:\-]\s*(.+)$",
-                r"(?im)^\s*paper\s+title\s*[:\-]\s*(.+)$",
-            ],
-            "authors": [
-                r"(?im)^\s*authors?\s*[:\-]\s*(.+)$",
+                r"(?im)^title\s*[:\-]\s*(.+)$",
+                r"(?im)^paper title\s*[:\-]\s*(.+)$",
             ],
             "journal": [
-                r"(?im)^\s*journal\s*[:\-]\s*(.+)$",
-                r"(?im)^\s*journal\s+name\s*[:\-]\s*(.+)$",
+                r"(?im)^journal\s*[:\-]\s*(.+)$",
+                r"(?im)^journal name\s*[:\-]\s*(.+)$",
             ],
             "conference": [
-                r"(?im)^\s*conference\s*[:\-]\s*(.+)$",
-                r"(?im)^\s*conference\s+name\s*[:\-]\s*(.+)$",
+                r"(?im)^conference\s*[:\-]\s*(.+)$",
+                r"(?im)^conference name\s*[:\-]\s*(.+)$",
             ],
             "publisher": [
-                r"(?im)^\s*publisher\s*[:\-]\s*(.+)$",
+                r"(?im)^publisher\s*[:\-]\s*(.+)$",
             ],
             "volume": [
-                r"(?im)^\s*volume\s*[:\-]\s*(.+)$",
+                r"(?im)^volume\s*[:\-]\s*(.+)$",
             ],
             "issue": [
-                r"(?im)^\s*issue\s*[:\-]\s*(.+)$",
+                r"(?im)^issue\s*[:\-]\s*(.+)$",
             ],
             "pages": [
-                r"(?im)^\s*pages?\s*[:\-]\s*(.+)$",
+                r"(?im)^pages?\s*[:\-]\s*(.+)$",
+            ],
+            "authors": [
+                r"(?im)^authors?\s*[:\-]\s*(.+)$",
             ],
         }
 
-        for field, patterns_list in (
-            patterns.items()
-        ):
+        for field, field_patterns in patterns.items():
 
             if metadata[field]:
                 continue
 
-            for pattern in patterns_list:
+            for pattern in field_patterns:
 
                 match = re.search(
                     pattern,
                     combined_text,
                 )
 
-                if not match:
-                    continue
+                if match:
 
-                value = self._clean_text(
-                    match.group(1)
-                )
-
-                if value:
-
-                    metadata[field] = (
-                        value
+                    value = self._clean_text(
+                        match.group(1)
                     )
 
-                    break
-
-        # --------------------------------------------------------
-        # 6. Common DOI URL normalization.
-        # --------------------------------------------------------
-
-        if metadata["doi"]:
-
-            metadata["doi"] = (
-                metadata["doi"]
-                .replace(
-                    "https://doi.org/",
-                    "",
-                )
-                .replace(
-                    "http://doi.org/",
-                    "",
-                )
-                .replace(
-                    "doi:",
-                    "",
-                )
-                .strip()
-            )
+                    if value:
+                        metadata[field] = value
+                        break
 
         return metadata
 
     # ============================================================
-    # BUILD SOURCE TEXT
+    # BUILD SOURCE TEXT FOR LLM
     # ============================================================
 
     def _build_source_text(
         self,
         chunks: List[Dict[str, Any]],
-        max_chars: int = MAX_SOURCE_CHARS,
+        max_chars: int = 12000,
     ) -> str:
-
-        if not chunks:
-            return ""
 
         sections = []
 
@@ -1062,10 +556,7 @@ class CitationManagerService:
                 continue
 
             text = self._clean_text(
-                item.get(
-                    "text",
-                    "",
-                )
+                item.get("text", "")
             )
 
             if not text:
@@ -1078,43 +569,37 @@ class CitationManagerService:
                 )
             )
 
-            score = self._score(
-                item
-            )
-
             piece = (
                 f"SOURCE {index}"
-                f" | CATEGORY: "
-                f"{category or 'Research Evidence'}"
-                f" | RELEVANCE: {score:.4f}"
-                f"\n{text}"
+                + (
+                    f" | {category}"
+                    if category
+                    else ""
+                )
+                + f"\n{text}"
             )
 
             remaining = (
                 max_chars - total
             )
 
-            if remaining <= 250:
+            if remaining <= 200:
                 break
 
-            piece = piece[
-                :remaining
-            ]
+            piece = piece[:remaining]
 
             sections.append(
                 piece
             )
 
-            total += len(
-                piece
-            )
+            total += len(piece)
 
         return "\n\n".join(
             sections
         )
 
     # ============================================================
-    # OPENAI CLIENT
+    # LLM CLIENT
     # ============================================================
 
     def _get_client(
@@ -1122,21 +607,13 @@ class CitationManagerService:
         api_key: str,
     ) -> OpenAI:
 
-        kwargs = {
-            "api_key": api_key,
-        }
-
-        if self.base_url:
-            kwargs["base_url"] = (
-                self.base_url
-            )
-
         return OpenAI(
-            **kwargs
+            api_key=api_key,
+            base_url=self.base_url,
         )
 
     # ============================================================
-    # EXTRACT JSON
+    # JSON EXTRACTION
     # ============================================================
 
     def _extract_json(
@@ -1147,12 +624,9 @@ class CitationManagerService:
         if not text:
             return None
 
-        cleaned = (
-            str(text)
-            .strip()
-        )
+        cleaned = text.strip()
 
-        # Remove markdown fences.
+        # Remove markdown code fences
         cleaned = re.sub(
             r"^```(?:json)?\s*",
             "",
@@ -1166,7 +640,6 @@ class CitationManagerService:
             cleaned,
         )
 
-        # Direct parse.
         try:
 
             data = json.loads(
@@ -1182,25 +655,15 @@ class CitationManagerService:
         except Exception:
             pass
 
-        # Find JSON object.
-        start = cleaned.find(
-            "{"
-        )
+        # Try to locate JSON object
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
 
-        end = cleaned.rfind(
-            "}"
-        )
+        if start >= 0 and end > start:
 
-        if (
-            start >= 0
-            and end > start
-        ):
-
-            candidate = (
-                cleaned[
-                    start:end + 1
-                ]
-            )
+            candidate = cleaned[
+                start:end + 1
+            ]
 
             try:
 
@@ -1248,159 +711,66 @@ class CitationManagerService:
 
             return {}
 
+        title_hint = (
+            metadata.get("title")
+            or "unknown title"
+        )
+
         prompt = f"""
 You are PaperAxiom, an expert academic research
-assistant, literature analyst and citation specialist.
+assistant and citation specialist.
 
-Analyze the research paper identified below.
+Analyze ONE research paper using the supplied evidence.
 
-============================================================
-PAPER ID
-============================================================
-
+PAPER ID:
 {paper_id}
 
-============================================================
-CURRENTLY EXTRACTED METADATA
-============================================================
+KNOWN METADATA:
+Title: {metadata.get("title") or "unknown"}
+Authors: {metadata.get("authors") or "unknown"}
+Year: {metadata.get("year") or "unknown"}
+Journal: {metadata.get("journal") or "unknown"}
+Conference: {metadata.get("conference") or "unknown"}
+Publisher: {metadata.get("publisher") or "unknown"}
+Volume: {metadata.get("volume") or "unknown"}
+Issue: {metadata.get("issue") or "unknown"}
+Pages: {metadata.get("pages") or "unknown"}
+DOI: {metadata.get("doi") or "unknown"}
 
-Title:
-{metadata.get("title") or "unknown"}
+IMPORTANT:
 
-Authors:
-{metadata.get("authors") or "unknown"}
+The supplied document evidence is the PRIMARY source.
 
-Year:
-{metadata.get("year") or "unknown"}
+Your task is NOT to invent missing bibliographic
+information.
 
-Journal:
-{metadata.get("journal") or "unknown"}
+Extract information only when it is supported by the
+document evidence.
 
-Conference:
-{metadata.get("conference") or "unknown"}
+If a field is genuinely unavailable, return an empty
+string for that field.
 
-Publisher:
-{metadata.get("publisher") or "unknown"}
+Do not write "Not available" inside the citation fields.
 
-Volume:
-{metadata.get("volume") or "unknown"}
+Never invent authors, title, year, journal, conference,
+DOI, volume, issue, or page numbers.
 
-Issue:
-{metadata.get("issue") or "unknown"}
+If the document provides the information in a different
+format, normalize it carefully.
 
-Pages:
-{metadata.get("pages") or "unknown"}
-
-DOI:
-{metadata.get("doi") or "unknown"}
-
-============================================================
-SOURCE EVIDENCE
-============================================================
+==================================================
+PAPER EVIDENCE
+==================================================
 
 {source_text}
 
-============================================================
-CORE INSTRUCTIONS
-============================================================
-
-The source evidence is the primary factual source.
-
-You are expected to SYNTHESIZE the paper, not simply repeat
-isolated retrieved chunks.
-
-Use your own academic language to explain what the evidence
-means.
-
-You may use general academic knowledge to clarify concepts,
-but never use general knowledge to invent paper-specific facts.
-
-Never invent:
-
-- authors
-- title
-- year
-- journal
-- conference
-- publisher
-- DOI
-- volume
-- issue
-- pages
-- dataset
-- sample size
-- model
-- algorithm
-- numerical result
-- experiment
-- contribution
-- limitation
-
-If information is genuinely unavailable, return an empty
-string for that field.
-
-============================================================
-METADATA PRIORITY
-============================================================
-
-When metadata conflicts:
-
-1. Prefer explicit bibliographic information in the source.
-2. Prefer structured document metadata when clearly associated
-   with this paper.
-3. Prefer repeated consistent information.
-4. Never guess.
-
-============================================================
-ACADEMIC ANALYSIS
-============================================================
-
-Generate:
-
-research_focus
-    Explain what problem the paper investigates, why it matters,
-    and what objective the study has.
-
-methodology_summary
-    Explain the methodology, experimental design, models,
-    algorithms, preprocessing and workflow where supported.
-
-key_findings
-    Explain the major findings and preserve important reported
-    numerical results.
-
-contribution
-    Explain what the study contributes to the research field.
-
-citation_context
-    Explain what type of statement another researcher could
-    appropriately support by citing this paper.
-
-academic_explanation
-    Give a coherent academic explanation of the entire study.
-    Do not simply list retrieved evidence.
-
-============================================================
-CITATION GENERATION
-============================================================
-
-Generate both:
-
-APA 7th edition citation.
-
-IEEE citation.
-
-Do not invent missing information.
-
-For unavailable fields, simply omit them.
-
-============================================================
-OUTPUT
-============================================================
+==================================================
+TASK
+==================================================
 
 Return ONLY valid JSON.
 
-Use exactly these keys:
+Use exactly this structure:
 
 {{
   "title": "",
@@ -1423,51 +793,99 @@ Use exactly these keys:
   "academic_explanation": ""
 }}
 
-============================================================
-QUALITY REQUIREMENTS
-============================================================
+==================================================
+CITATION RULES
+==================================================
 
-- Be academically precise.
-- Be concise but informative.
-- Preserve numerical findings.
-- Do not fabricate information.
-- Do not copy large passages.
-- Do not expose reasoning.
-- Do not mention retrieval.
-- Do not mention chunks.
-- Do not mention embeddings.
-- Do not mention Qdrant.
-- Do not mention prompts.
-- Do not mention model selection.
+APA 7:
+
+Use the standard scholarly structure.
+
+Author(s). (Year). Title. Journal/Conference,
+volume(issue), pages. DOI
+
+Do not fabricate missing fields.
+
+IEEE:
+
+[1] Author(s), "Title," Journal/Conference,
+vol., no., pp., year, doi.
+
+Again, do not invent missing information.
+
+If authors are unavailable, create the citation using
+only information supported by the evidence.
+
+Do NOT write:
+
+"Partial citation — authors not available."
+
+Instead simply omit the unavailable author field.
+
+==================================================
+RESEARCH FOCUS
+==================================================
+
+Explain in 1–2 concise sentences what the paper
+investigates and why.
+
+==================================================
+METHODOLOGY SUMMARY
+==================================================
+
+Explain the main methodology in 1–3 sentences.
+
+==================================================
+KEY FINDINGS
+==================================================
+
+Summarize the most important findings in 1–3 sentences.
+
+Preserve reported numerical results when available.
+
+==================================================
+CONTRIBUTION
+==================================================
+
+Explain what the study contributes to the field.
+
+==================================================
+CITATION CONTEXT
+==================================================
+
+Explain when another researcher would appropriately
+cite this paper.
+
+==================================================
+ACADEMIC EXPLANATION
+==================================================
+
+Write a concise, clear paragraph explaining the paper
+in your own words.
+
+Do not copy large portions of the source.
+
+Do not expose reasoning.
+
+Do not mention retrieval, chunks, embeddings, Qdrant,
+prompts, or model selection.
 
 Return ONLY JSON.
 """
 
-        # --------------------------------------------------------
-        # Try configured API keys and models.
-        # --------------------------------------------------------
-
         for api_key in self.api_keys:
 
-            if not api_key:
-                continue
-
             for model in self.models:
-
-                if not model:
-                    continue
 
                 try:
 
                     print(
                         "Citation Manager | "
-                        f"Calling model: {model}"
+                        f"Generating with model: {model}"
                     )
 
-                    client = (
-                        self._get_client(
-                            api_key
-                        )
+                    client = self._get_client(
+                        api_key
                     )
 
                     response = (
@@ -1477,10 +895,11 @@ Return ONLY JSON.
                                 {
                                     "role": "system",
                                     "content": (
-                                        "You are an expert "
+                                        "You are a precise "
                                         "academic citation "
-                                        "assistant. Return "
-                                        "valid JSON only."
+                                        "assistant. "
+                                        "Return valid JSON "
+                                        "only."
                                     ),
                                 },
                                 {
@@ -1489,7 +908,7 @@ Return ONLY JSON.
                                 },
                             ],
                             temperature=0.1,
-                            max_tokens=self.LLM_MAX_TOKENS,
+                            max_tokens=1200,
                         )
                     )
 
@@ -1500,23 +919,20 @@ Return ONLY JSON.
                         continue
 
                     content = (
-                        response
-                        .choices[0]
+                        response.choices[0]
                         .message
                         .content
                     )
 
-                    data = (
-                        self._extract_json(
-                            content
-                        )
+                    data = self._extract_json(
+                        content
                     )
 
                     if data:
 
                         print(
                             "Citation Manager | "
-                            f"Successful model: {model}"
+                            f"Success with model: {model}"
                         )
 
                         return data
@@ -1525,8 +941,8 @@ Return ONLY JSON.
 
                     print(
                         "Citation Manager | "
-                        f"Model failed: {model} | "
-                        f"{exc}"
+                        f"Failed → model: {model} | "
+                        f"error: {exc}"
                     )
 
                     continue
@@ -1534,7 +950,7 @@ Return ONLY JSON.
         return {}
 
     # ============================================================
-    # MERGE METADATA
+    # MERGE METADATA + LLM
     # ============================================================
 
     def _merge_metadata(
@@ -1545,7 +961,7 @@ Return ONLY JSON.
 
         result = {}
 
-        metadata_fields = [
+        fields = [
             "title",
             "authors",
             "year",
@@ -1558,14 +974,7 @@ Return ONLY JSON.
             "doi",
         ]
 
-        for field in metadata_fields:
-
-            source_value = self._clean_text(
-                metadata.get(
-                    field,
-                    "",
-                )
-            )
+        for field in fields:
 
             llm_value = self._clean_text(
                 analysis.get(
@@ -1574,36 +983,77 @@ Return ONLY JSON.
                 )
             )
 
-            # Structured/source metadata takes priority.
-            result[field] = (
-                source_value
-                or llm_value
-            )
-
-        analysis_fields = [
-            "research_focus",
-            "methodology_summary",
-            "key_findings",
-            "contribution",
-            "citation_context",
-            "academic_explanation",
-        ]
-
-        for field in analysis_fields:
-
-            result[field] = (
-                self._clean_text(
-                    analysis.get(
-                        field,
-                        "",
-                    )
+            metadata_value = self._clean_text(
+                metadata.get(
+                    field,
+                    "",
                 )
             )
+
+            result[field] = (
+                llm_value
+                or metadata_value
+            )
+
+        # LLM-generated explanatory fields
+        result["research_focus"] = (
+            self._clean_text(
+                analysis.get(
+                    "research_focus",
+                    "",
+                )
+            )
+        )
+
+        result["methodology_summary"] = (
+            self._clean_text(
+                analysis.get(
+                    "methodology_summary",
+                    "",
+                )
+            )
+        )
+
+        result["key_findings"] = (
+            self._clean_text(
+                analysis.get(
+                    "key_findings",
+                    "",
+                )
+            )
+        )
+
+        result["contribution"] = (
+            self._clean_text(
+                analysis.get(
+                    "contribution",
+                    "",
+                )
+            )
+        )
+
+        result["citation_context"] = (
+            self._clean_text(
+                analysis.get(
+                    "citation_context",
+                    "",
+                )
+            )
+        )
+
+        result["academic_explanation"] = (
+            self._clean_text(
+                analysis.get(
+                    "academic_explanation",
+                    "",
+                )
+            )
+        )
 
         return result
 
     # ============================================================
-    # APA 7 BUILDER
+    # BUILD CITATION FALLBACKS
     # ============================================================
 
     def _build_apa(
@@ -1703,19 +1153,16 @@ Return ONLY JSON.
             )
 
             if volume:
-
                 container_part += (
                     f", *{volume}*"
                 )
 
             if issue:
-
                 container_part += (
                     f"({issue})"
                 )
 
             if pages:
-
                 container_part += (
                     f", {pages}"
                 )
@@ -1728,41 +1175,36 @@ Return ONLY JSON.
 
         if doi:
 
-            doi_clean = (
-                doi
-                .replace(
-                    "https://doi.org/",
-                    "",
+            doi_clean = doi
+
+            if not doi_clean.lower().startswith(
+                "http"
+            ):
+
+                doi_clean = (
+                    "https://doi.org/"
+                    + doi_clean
                 )
-                .replace(
-                    "http://doi.org/",
-                    "",
-                )
-                .replace(
-                    "doi:",
-                    "",
-                )
-                .strip()
-            )
 
             parts.append(
-                "https://doi.org/"
-                + doi_clean
+                doi_clean
             )
 
         citation = " ".join(
             parts
         ).strip()
 
+        if citation:
+            return citation
+
         return (
-            citation
-            or
-            "Citation information unavailable "
-            "from the available paper evidence."
+            title
+            or "Citation information unavailable "
+            "from the document."
         )
 
     # ============================================================
-    # IEEE BUILDER
+    # IEEE
     # ============================================================
 
     def _build_ieee(
@@ -1838,70 +1280,56 @@ Return ONLY JSON.
             or conference
         )
 
-        parts = [
-            "[1]"
-        ]
+        parts = ["[1]"]
 
         if authors:
-
             parts.append(
                 f"{authors},"
             )
 
         if title:
-
             parts.append(
                 f'"{title},"'
             )
 
         if container:
-
             parts.append(
                 f"*{container}*,"
             )
 
         if volume:
-
             parts.append(
                 f"vol. {volume},"
             )
 
         if issue:
-
             parts.append(
                 f"no. {issue},"
             )
 
         if pages:
-
             parts.append(
                 f"pp. {pages},"
             )
 
         if year:
-
             parts.append(
                 f"{year},"
             )
 
         if doi:
 
-            doi_clean = (
-                doi
-                .replace(
-                    "https://doi.org/",
-                    "",
-                )
-                .replace(
-                    "http://doi.org/",
-                    "",
-                )
-                .replace(
-                    "doi:",
-                    "",
-                )
-                .strip()
-            )
+            doi_clean = doi
+
+            if doi_clean.lower().startswith(
+                "https://doi.org/"
+            ):
+
+                doi_clean = doi_clean[
+                    len(
+                        "https://doi.org/"
+                    ):
+                ]
 
             parts.append(
                 f"doi: {doi_clean}"
@@ -1912,191 +1340,13 @@ Return ONLY JSON.
         ).strip()
 
         if citation != "[1]":
-
             return citation
 
         return (
             title
-            or
-            "Citation information unavailable "
-            "from the available paper evidence."
+            or "Citation information unavailable "
+            "from the document."
         )
-
-    # ============================================================
-    # FALLBACK ACADEMIC EXPLANATION
-    # ============================================================
-
-    def _fallback_explanation(
-        self,
-        metadata: Dict[str, Any],
-        chunks: List[Dict[str, Any]],
-    ) -> Dict[str, str]:
-
-        # Evidence-only fallback when the LLM is unavailable.
-        #
-        # This deliberately does not invent conclusions.
-
-        focus = ""
-
-        methodology = ""
-
-        findings = ""
-
-        contribution = ""
-
-        citation_context = ""
-
-        # --------------------------------------------------------
-        # Category-based evidence.
-        # --------------------------------------------------------
-
-        grouped = {}
-
-        for item in chunks:
-
-            category = (
-                item.get(
-                    "category",
-                    "",
-                )
-            )
-
-            text = self._clean_text(
-                item.get(
-                    "text",
-                    "",
-                )
-            )
-
-            if not text:
-                continue
-
-            grouped.setdefault(
-                category,
-                [],
-            ).append(
-                text
-            )
-
-        if grouped.get(
-            "Research Focus"
-        ):
-
-            focus = " ".join(
-                grouped[
-                    "Research Focus"
-                ][:2]
-            )[:1800]
-
-        if grouped.get(
-            "Methodology"
-        ):
-
-            methodology = " ".join(
-                grouped[
-                    "Methodology"
-                ][:3]
-            )[:2200]
-
-        if grouped.get(
-            "Key Findings"
-        ):
-
-            findings = " ".join(
-                grouped[
-                    "Key Findings"
-                ][:3]
-            )[:2200]
-
-        if grouped.get(
-            "Contribution"
-        ):
-
-            contribution = " ".join(
-                grouped[
-                    "Contribution"
-                ][:2]
-            )[:1800]
-
-        if grouped.get(
-            "Citation Context"
-        ):
-
-            citation_context = " ".join(
-                grouped[
-                    "Citation Context"
-                ][:2]
-            )[:1800]
-
-        academic_parts = []
-
-        if focus:
-            academic_parts.append(
-                focus
-            )
-
-        if methodology:
-            academic_parts.append(
-                methodology
-            )
-
-        if findings:
-            academic_parts.append(
-                findings
-            )
-
-        if contribution:
-            academic_parts.append(
-                contribution
-            )
-
-        academic_explanation = (
-            " ".join(
-                academic_parts
-            )
-        )[:5000]
-
-        return {
-            "research_focus": focus,
-            "methodology_summary": methodology,
-            "key_findings": findings,
-            "contribution": contribution,
-            "citation_context": citation_context,
-            "academic_explanation": academic_explanation,
-        }
-
-    # ============================================================
-    # SOURCE COUNT / STATUS
-    # ============================================================
-
-    def _determine_status(
-        self,
-        metadata: Dict[str, Any],
-        analysis: Dict[str, Any],
-    ) -> str:
-
-        required = [
-            metadata.get(
-                "title"
-            ),
-            metadata.get(
-                "year"
-            ),
-        ]
-
-        if all(
-            required
-        ):
-
-            if analysis:
-                return "ai_generated"
-
-            return "evidence_grounded"
-
-        if analysis:
-            return "ai_generated_incomplete_metadata"
-
-        return "metadata_incomplete"
 
     # ============================================================
     # PUBLIC GENERATE METHOD
@@ -2113,34 +1363,21 @@ Return ONLY JSON.
             )
         )
 
-        # --------------------------------------------------------
-        # Validation
-        # --------------------------------------------------------
-
         if not normalized_ids:
 
             raise ValueError(
                 "Select at least one paper."
             )
 
-        if len(normalized_ids) > self.MAX_PAPERS:
+        if len(normalized_ids) > 10:
 
             raise ValueError(
                 "You can select a maximum "
                 "of 10 papers."
             )
 
-        print(
-            "=================================================="
-        )
-
-        print(
-            "Citation Manager | "
-            f"Processing {len(normalized_ids)} paper(s)"
-        )
-
         # --------------------------------------------------------
-        # Retrieval
+        # RETRIEVE
         # --------------------------------------------------------
 
         evidence = (
@@ -2152,26 +1389,15 @@ Return ONLY JSON.
         citations = []
 
         # --------------------------------------------------------
-        # Process each paper.
+        # PROCESS EACH PAPER
         # --------------------------------------------------------
 
         for paper_id in normalized_ids:
 
-            print(
-                "Citation Manager | "
-                f"Analyzing Paper {paper_id}"
+            chunks = evidence.get(
+                paper_id,
+                [],
             )
-
-            chunks = (
-                evidence.get(
-                    paper_id,
-                    [],
-                )
-            )
-
-            # ----------------------------------------------------
-            # Metadata extraction
-            # ----------------------------------------------------
 
             metadata = (
                 self._extract_metadata_from_chunks(
@@ -2179,60 +1405,37 @@ Return ONLY JSON.
                 )
             )
 
-            # ----------------------------------------------------
-            # Source context
-            # ----------------------------------------------------
-
             source_text = (
                 self._build_source_text(
                     chunks,
-                    max_chars=self.MAX_SOURCE_CHARS,
+                    max_chars=12000,
                 )
             )
 
-            # ----------------------------------------------------
-            # LLM analysis
-            # ----------------------------------------------------
+            if not source_text:
+
+                source_text = (
+                    "No sufficient evidence was "
+                    "retrieved from this paper."
+                )
 
             analysis = (
                 self._generate_llm_analysis(
                     paper_id=paper_id,
                     metadata=metadata,
-                    source_text=(
-                        source_text
-                        or
-                        "No sufficient paper evidence "
-                        "was retrieved."
-                    ),
+                    source_text=source_text,
                 )
             )
 
-            # ----------------------------------------------------
-            # If LLM fails, create evidence fallback.
-            # ----------------------------------------------------
-
-            if not analysis:
-
-                analysis = (
-                    self._fallback_explanation(
-                        metadata=metadata,
-                        chunks=chunks,
-                    )
-                )
-
-            # ----------------------------------------------------
-            # Merge.
-            # ----------------------------------------------------
-
-            merged = (
-                self._merge_metadata(
-                    metadata,
-                    analysis,
-                )
+            merged = self._merge_metadata(
+                metadata,
+                analysis,
             )
 
             # ----------------------------------------------------
-            # Build citations locally.
+            # Build citations locally when possible.
+            # This prevents the LLM from producing malformed
+            # citation strings.
             # ----------------------------------------------------
 
             apa = self._build_apa(
@@ -2243,189 +1446,155 @@ Return ONLY JSON.
                 merged
             )
 
-            # ----------------------------------------------------
-            # Human-readable title fallback.
-            # ----------------------------------------------------
-
             title = (
                 merged.get(
                     "title"
                 )
-                or
-                "Title not available in the "
-                "retrieved evidence."
+                or "Title not available in "
+                "the retrieved evidence."
             )
 
-            # ----------------------------------------------------
-            # Status.
-            # ----------------------------------------------------
-
-            citation_status = (
-                self._determine_status(
-                    metadata=merged,
-                    analysis=analysis,
+            authors = (
+                merged.get(
+                    "authors"
                 )
+                or ""
             )
 
             # ----------------------------------------------------
-            # Final citation object.
+            # Status
+            # ----------------------------------------------------
+
+            required_metadata = [
+                merged.get("title"),
+                merged.get("year"),
+            ]
+
+            if all(
+                required_metadata
+            ):
+
+                citation_status = (
+                    "evidence_grounded"
+                )
+
+            else:
+
+                citation_status = (
+                    "metadata_incomplete"
+                )
+
+            # ----------------------------------------------------
+            # Add final item
             # ----------------------------------------------------
 
             citations.append(
                 {
                     "paper_id": paper_id,
-
                     "title": title,
-
-                    "authors": merged.get(
-                        "authors",
-                        "",
-                    ),
-
+                    "authors": authors,
                     "year": merged.get(
                         "year",
                         "",
                     ),
-
                     "journal": merged.get(
                         "journal",
                         "",
                     ),
-
                     "conference": merged.get(
                         "conference",
                         "",
                     ),
-
                     "publisher": merged.get(
                         "publisher",
                         "",
                     ),
-
                     "volume": merged.get(
                         "volume",
                         "",
                     ),
-
                     "issue": merged.get(
                         "issue",
                         "",
                     ),
-
                     "pages": merged.get(
                         "pages",
                         "",
                     ),
-
                     "doi": merged.get(
                         "doi",
                         "",
                     ),
-
                     "apa_7": apa,
-
                     "ieee": ieee,
-
                     "research_focus": (
                         merged.get(
                             "research_focus",
                             "",
                         )
-                        or
-                        "Research focus could not be "
+                        or "Research focus could not be "
                         "determined from the available "
                         "paper evidence."
                     ),
-
                     "methodology_summary": (
                         merged.get(
                             "methodology_summary",
                             "",
                         )
                     ),
-
                     "key_findings": (
                         merged.get(
                             "key_findings",
                             "",
                         )
                     ),
-
                     "contribution": (
                         merged.get(
                             "contribution",
                             "",
                         )
                     ),
-
                     "citation_context": (
                         merged.get(
                             "citation_context",
                             "",
                         )
                     ),
-
                     "academic_explanation": (
                         merged.get(
                             "academic_explanation",
                             "",
                         )
                     ),
-
                     "evidence": chunks,
-
                     "source_text": source_text,
-
-                    "citation_status": (
-                        citation_status
-                    ),
+                    "citation_status": citation_status,
                 }
             )
 
         # --------------------------------------------------------
-        # Final result.
+        # FINAL RESULT
         # --------------------------------------------------------
 
-        total_sources = sum(
-            len(items)
-            for items in evidence.values()
-        )
-
-        result = {
+        return {
             "papers_count": len(
                 normalized_ids
             ),
-
-            "paper_ids": normalized_ids,
-
-            "source_count": total_sources,
-
+            "source_count": sum(
+                len(items)
+                for items in evidence.values()
+            ),
             "citations": citations,
-
             "generation_status": (
                 "ai_generated"
             ),
         }
 
-        print(
-            "Citation Manager | "
-            f"Completed | "
-            f"papers={len(normalized_ids)} | "
-            f"sources={total_sources}"
-        )
 
-        print(
-            "=================================================="
-        )
-
-        return result
-
-
-# ================================================================
+# ============================================================
 # SERVICE INSTANCE
-# IMPORTANT:
-# routes.py imports this exact object.
-# ================================================================
+# IMPORTANT: routes.py imports this object.
+# ============================================================
 
 citation_manager_service = (
     CitationManagerService()

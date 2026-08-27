@@ -1,980 +1,110 @@
-from typing import Dict, List, Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
 import re
 
-from app.services.multi_document_service import multi_document_service
-from app.services.chat_service import chat_service
+from app.services.multi_document_service import (
+    multi_document_service,
+)
+
+from app.services.chat_service import (
+    chat_service,
+)
 
 
 class LiteratureReviewService:
     """
-    PaperAxiom evidence-grounded literature review service.
+    ResearchGPT / PaperAxiom
+    Evidence-grounded academic literature review service.
 
-    Main goals:
-        - Retrieve evidence from selected papers.
-        - Keep each paper clearly separated.
-        - Remove duplicate evidence.
-        - Give the LLM enough context to understand the papers.
-        - Generate a concise academic synthesis.
-        - Compare studies instead of merely listing them.
-        - Never invent unsupported paper information.
-        - Preserve the existing API/service interface.
+    Pipeline
+    --------
+    Selected papers
+        ↓
+    Balanced semantic retrieval
+        ↓
+    Evidence normalization
+        ↓
+    Compact academic context
+        ↓
+    LLM literature synthesis
+        ↓
+    Clean academic review
+        ↓
+    Evidence fallback if LLM unavailable
+
+    Design goals
+    ------------
+    - Reliable
+    - Evidence-grounded
+    - Balanced across selected papers
+    - Reasonably fast
+    - Compatible with existing routes
+    - Suitable for graduate-level academic writing
     """
 
     # ============================================================
-    # RETRIEVAL CATEGORIES
+    # CONFIGURATION
     # ============================================================
 
-    CATEGORIES = [
-        (
-            "Research Focus",
-            (
-                "research problem, research question, objective, "
-                "aim, motivation, hypothesis, clinical or scientific "
-                "problem, study purpose"
-            ),
-        ),
-        (
-            "Methodology",
-            (
-                "methodology, research design, experimental setup, "
-                "workflow, pipeline, architecture, procedure, "
-                "training strategy, validation strategy"
-            ),
-        ),
-        (
-            "Dataset and Data",
-            (
-                "dataset, data source, sample size, population, "
-                "patients, imaging data, annotations, labels, "
-                "train validation test split, modality"
-            ),
-        ),
-        (
-            "Models and Techniques",
-            (
-                "model, algorithm, deep learning, machine learning, "
-                "neural network, architecture, feature extraction, "
-                "loss function, optimization, preprocessing, "
-                "classification, segmentation, detection"
-            ),
-        ),
-        (
-            "Results and Findings",
-            (
-                "results, findings, performance, accuracy, precision, "
-                "recall, F1, AUC, Dice, IoU, sensitivity, specificity, "
-                "evaluation, comparison, quantitative results"
-            ),
-        ),
-        (
-            "Contribution and Novelty",
-            (
-                "contribution, novelty, innovation, proposed method, "
-                "advancement, significance, improvement, main contribution"
-            ),
-        ),
-        (
-            "Limitations",
-            (
-                "limitations, weaknesses, constraints, challenges, "
-                "failure cases, generalization problems, limitations "
-                "of dataset or methodology"
-            ),
-        ),
-        (
-            "Future Work",
-            (
-                "future work, future research, recommendations, "
-                "extensions, improvements, unresolved problems"
-            ),
-        ),
-    ]
+    MIN_PAPERS = 1
+    MAX_PAPERS = 10
+
+    DEFAULT_EVIDENCE_PER_PAPER = 8
+
+    RETRIEVAL_LIMIT_PER_PAPER = 8
+
+    MAX_EVIDENCE_PER_PAPER = 8
+
+    MAX_CHARS_PER_PAPER = 5000
+
+    # Keep total prompt comfortably below ChatService's
+    # internal prompt-size protection.
+    MAX_CONTEXT_CHARS = 10500
+
+    # Literature reviews need more generation space than
+    # simple question answering.
+    LLM_MAX_TOKENS = 2200
 
     # ============================================================
-    # BASIC TEXT HELPERS
+    # RETRIEVAL QUERY
     # ============================================================
 
-    def _clean_text(self, text: Any) -> str:
-        """Normalize whitespace without changing meaning."""
-
-        if text is None:
-            return ""
-
-        return " ".join(
-            str(text)
-            .replace("\r", " ")
-            .replace("\n", " ")
-            .split()
-        ).strip()
-
-    def _normalize(self, text: str) -> str:
-        """Normalize text for duplicate comparison."""
-
-        return self._clean_text(text).lower()
+    LITERATURE_QUERY = """
+    research problem research question objective aim
+    motivation significance theoretical background
+    methodology research design framework workflow pipeline
+    experimental setup preprocessing training validation testing
+    dataset data source population participants patients samples
+    images videos annotations labels data split
+    model architecture algorithm deep learning machine learning
+    neural network CNN transformer classification segmentation
+    detection feature extraction optimization
+    results findings evaluation performance accuracy precision
+    recall F1 AUC Dice IoU sensitivity specificity
+    comparison baseline ablation experiment
+    contribution novelty innovation advancement
+    limitations weaknesses challenges generalization robustness
+    bias computational limitations clinical limitations
+    future work recommendations extensions unresolved problems
+    """
 
     # ============================================================
-    # DUPLICATE DETECTION
+    # INITIALIZATION
     # ============================================================
 
-    def _is_duplicate(
-        self,
-        text: str,
-        existing: List[str],
-    ) -> bool:
-        """
-        Detect exact and highly similar retrieved chunks.
+    def __init__(self) -> None:
 
-        This prevents the same paragraph from consuming the
-        LLM context multiple times.
-        """
-
-        normalized = self._normalize(text)
-
-        if not normalized:
-            return True
-
-        words_a = set(
-            normalized.split()
+        self.multi_document_service = (
+            multi_document_service
         )
 
-        for old in existing:
-
-            old_normalized = self._normalize(
-                old
-            )
-
-            if normalized == old_normalized:
-                return True
-
-            words_b = set(
-                old_normalized.split()
-            )
-
-            if (
-                len(words_a) < 20
-                or len(words_b) < 20
-            ):
-                continue
-
-            union = words_a | words_b
-
-            if not union:
-                continue
-
-            similarity = (
-                len(words_a & words_b)
-                / len(union)
-            )
-
-            if similarity >= 0.88:
-                return True
-
-        return False
-
-    # ============================================================
-    # RETRIEVE EVIDENCE
-    # ============================================================
-
-    def _retrieve_evidence(
-        self,
-        paper_ids: List[int],
-    ) -> Dict[int, List[Dict[str, Any]]]:
-        """
-        Retrieve evidence separately for every selected paper.
-
-        Each category retrieves focused evidence so that the LLM
-        receives information about the paper's problem, method,
-        data, results, contribution, limitations and future work.
-        """
-
-        evidence_by_paper = {
-            paper_id: []
-            for paper_id in paper_ids
-        }
-
-        for category, query in self.CATEGORIES:
-
-            print(
-                f"Literature review | Retrieving: {category}"
-            )
-
-            try:
-
-                result = (
-                    multi_document_service.search(
-                        query=query,
-                        paper_ids=paper_ids,
-                        limit_per_paper=2,
-                    )
-                )
-
-            except Exception as exc:
-
-                print(
-                    "Literature review retrieval failed | "
-                    f"{category} | {exc}"
-                )
-
-                continue
-
-            if not isinstance(
-                result,
-                dict,
-            ):
-                continue
-
-            results = result.get(
-                "results",
-                [],
-            )
-
-            if not isinstance(
-                results,
-                list,
-            ):
-                continue
-
-            for item in results:
-
-                if not isinstance(
-                    item,
-                    dict,
-                ):
-                    continue
-
-                paper_id = item.get(
-                    "paper_id"
-                )
-
-                if paper_id not in evidence_by_paper:
-                    continue
-
-                text = self._clean_text(
-                    item.get(
-                        "text",
-                        "",
-                    )
-                )
-
-                if not text:
-                    continue
-
-                existing = [
-                    x["text"]
-                    for x in evidence_by_paper[
-                        paper_id
-                    ]
-                ]
-
-                if self._is_duplicate(
-                    text,
-                    existing,
-                ):
-                    continue
-
-                try:
-
-                    score = float(
-                        item.get(
-                            "score",
-                            0.0,
-                        )
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-
-                    score = 0.0
-
-                evidence_by_paper[
-                    paper_id
-                ].append(
-                    {
-                        "category": category,
-                        "text": text[:1000],
-                        "score": score,
-                    }
-                )
-
-        # ========================================================
-        # Keep strongest evidence.
-        #
-        # We intentionally keep evidence from different categories
-        # rather than simply taking the globally highest scores.
-        # ========================================================
-
-        for paper_id in evidence_by_paper:
-
-            items = evidence_by_paper[
-                paper_id
-            ]
-
-            selected = []
-
-            # First take the strongest item from each category.
-            for category, _ in self.CATEGORIES:
-
-                category_items = [
-                    item
-                    for item in items
-                    if item["category"] == category
-                ]
-
-                category_items.sort(
-                    key=lambda x: x["score"],
-                    reverse=True,
-                )
-
-                if category_items:
-                    selected.append(
-                        category_items[0]
-                    )
-
-            # Then fill remaining slots with strongest evidence.
-            remaining = [
-                item
-                for item in items
-                if item not in selected
-            ]
-
-            remaining.sort(
-                key=lambda x: x["score"],
-                reverse=True,
-            )
-
-            selected.extend(
-                remaining[:5]
-            )
-
-            evidence_by_paper[
-                paper_id
-            ] = selected[:12]
-
-            print(
-                "Literature review evidence | "
-                f"Paper {paper_id} | "
-                f"Chunks: "
-                f"{len(evidence_by_paper[paper_id])}"
-            )
-
-        return evidence_by_paper
-
-    # ============================================================
-    # BUILD STRUCTURED CONTEXT
-    # ============================================================
-
-    def _build_context(
-        self,
-        paper_ids: List[int],
-        evidence_by_paper: Dict[int, List[Dict[str, Any]]],
-    ) -> str:
-        """
-        Build a clearly separated context for the LLM.
-
-        Important:
-        The model must never confuse evidence from Paper A
-        with evidence from Paper B.
-        """
-
-        sections = []
-
-        for index, paper_id in enumerate(
-            paper_ids,
-            start=1,
-        ):
-
-            sections.append(
-                "\n"
-                + "=" * 80
-                + f"\nPAPER {index} | PAPER ID: {paper_id}\n"
-                + "=" * 80
-            )
-
-            evidence = evidence_by_paper.get(
-                paper_id,
-                [],
-            )
-
-            if not evidence:
-
-                sections.append(
-                    "No relevant evidence was retrieved "
-                    "for this paper."
-                )
-
-                continue
-
-            for category, _ in self.CATEGORIES:
-
-                category_items = [
-                    item
-                    for item in evidence
-                    if item["category"] == category
-                ]
-
-                if not category_items:
-                    continue
-
-                sections.append(
-                    f"\n[{category}]"
-                )
-
-                for item in category_items:
-
-                    sections.append(
-                        f"\n- {item['text']}"
-                    )
-
-        return "\n".join(
-            sections
+        self.chat_service = (
+            chat_service
         )
 
     # ============================================================
-    # FALLBACK
-    # ============================================================
-
-    def _build_fallback_review(
-        self,
-        paper_ids: List[int],
-        evidence_by_paper: Dict[int, List[Dict[str, Any]]],
-    ) -> str:
-        """
-        Safe fallback when the LLM is unavailable.
-
-        It does not invent content.
-        """
-
-        parts = [
-            "# Literature Review\n\n",
-            (
-                "The selected studies were reviewed using the "
-                "available evidence from each paper. The synthesis "
-                "below is limited to information supported by the "
-                "retrieved research material.\n\n"
-            ),
-        ]
-
-        # --------------------------------------------------------
-        # Research focus
-        # --------------------------------------------------------
-
-        parts.append(
-            "## Research Focus\n\n"
-        )
-
-        for paper_id in paper_ids:
-
-            items = [
-                item
-                for item in evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-                if item["category"]
-                == "Research Focus"
-            ]
-
-            if items:
-
-                parts.append(
-                    f"**Paper {paper_id}:** "
-                    f"{items[0]['text']}\n\n"
-                )
-
-        # --------------------------------------------------------
-        # Methodology
-        # --------------------------------------------------------
-
-        parts.append(
-            "## Methodological Approaches\n\n"
-        )
-
-        for paper_id in paper_ids:
-
-            items = [
-                item
-                for item in evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-                if item["category"]
-                == "Methodology"
-            ]
-
-            if items:
-
-                parts.append(
-                    f"**Paper {paper_id}:** "
-                    f"{items[0]['text']}\n\n"
-                )
-
-        # --------------------------------------------------------
-        # Results
-        # --------------------------------------------------------
-
-        parts.append(
-            "## Results and Findings\n\n"
-        )
-
-        for paper_id in paper_ids:
-
-            items = [
-                item
-                for item in evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-                if item["category"]
-                == "Results and Findings"
-            ]
-
-            if items:
-
-                parts.append(
-                    f"**Paper {paper_id}:** "
-                    f"{items[0]['text']}\n\n"
-                )
-
-        # --------------------------------------------------------
-        # Contributions
-        # --------------------------------------------------------
-
-        parts.append(
-            "## Contributions\n\n"
-        )
-
-        for paper_id in paper_ids:
-
-            items = [
-                item
-                for item in evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-                if item["category"]
-                == "Contribution and Novelty"
-            ]
-
-            if items:
-
-                parts.append(
-                    f"**Paper {paper_id}:** "
-                    f"{items[0]['text']}\n\n"
-                )
-
-        # --------------------------------------------------------
-        # Limitations
-        # --------------------------------------------------------
-
-        parts.append(
-            "## Limitations and Future Directions\n\n"
-        )
-
-        for paper_id in paper_ids:
-
-            limitations = [
-                item
-                for item in evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-                if item["category"]
-                == "Limitations"
-            ]
-
-            future = [
-                item
-                for item in evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-                if item["category"]
-                == "Future Work"
-            ]
-
-            if limitations:
-
-                parts.append(
-                    f"**Paper {paper_id} limitations:** "
-                    f"{limitations[0]['text']}\n\n"
-                )
-
-            if future:
-
-                parts.append(
-                    f"**Paper {paper_id} future work:** "
-                    f"{future[0]['text']}\n\n"
-                )
-
-        parts.append(
-            (
-                "## Comparative Assessment\n\n"
-                "The available evidence shows that the selected "
-                "studies address related research questions while "
-                "differing in methodology, data, computational "
-                "techniques, and reported findings. A definitive "
-                "cross-paper research gap should only be stated "
-                "when it is directly supported by the evidence."
-            )
-        )
-
-        return "".join(
-            parts
-        )
-
-    # ============================================================
-    # CLEAN LLM OUTPUT
-    # ============================================================
-
-    def _clean_llm_output(
-        self,
-        answer: Any,
-    ) -> str:
-        """
-        Remove accidental code fences and unnecessary whitespace.
-        """
-
-        if answer is None:
-            return ""
-
-        text = str(
-            answer
-        ).strip()
-
-        text = re.sub(
-            r"^```(?:markdown|md|text)?\s*",
-            "",
-            text,
-            flags=re.I,
-        )
-
-        text = re.sub(
-            r"\s*```$",
-            "",
-            text,
-        )
-
-        return text.strip()
-
-    # ============================================================
-    # GENERATION PROMPT
-    # ============================================================
-
-    def _build_prompt(
-        self,
-        paper_ids: List[int],
-        evidence_context: str,
-    ) -> str:
-        """
-        Strong academic synthesis prompt.
-
-        The important change from the old version is that the LLM
-        is explicitly instructed to synthesize relationships between
-        papers rather than produce repetitive paper-by-paper summaries.
-        """
-
-        paper_labels = ", ".join(
-            f"Paper {paper_id}"
-            for paper_id in paper_ids
-        )
-
-        return f"""
-You are PaperAxiom, an expert academic research assistant.
-
-Your task is to write a concise, high-quality literature review
-from the supplied research-paper evidence.
-
-SELECTED PAPERS:
-{paper_labels}
-
-============================================================
-SOURCE MATERIAL
-============================================================
-
-{evidence_context}
-
-============================================================
-CORE RULE
-============================================================
-
-The supplied papers are the PRIMARY source of truth.
-
-Use the evidence to understand the papers deeply before writing.
-
-Do not invent:
-- authors
-- paper titles
-- datasets
-- numerical results
-- methods
-- claims
-- limitations
-- research gaps
-- citations
-
-If information is not supported by the supplied evidence,
-do not manufacture it.
-
-============================================================
-WHAT A GOOD REVIEW SHOULD DO
-============================================================
-
-Do NOT write:
-
-"Paper 1 did X.
-Paper 2 did Y.
-Paper 3 did Z."
-
-That is a paper summary list.
-
-Instead, synthesize the studies.
-
-For example:
-
-"Recent studies have increasingly explored X through
-deep-learning-based approaches. While one study focuses on A,
-another extends the problem toward B, resulting in differences
-in both methodology and evaluation. Collectively, the findings
-suggest..., although differences in datasets and experimental
-settings limit direct comparison."
-
-The final review should therefore connect the studies.
-
-============================================================
-PAPER IDENTIFICATION
-============================================================
-
-When discussing an individual study, identify it clearly as:
-
-- Paper 1
-- Paper 2
-- Paper 3
-
-If the evidence contains a reliable paper title, use the title
-naturally as well.
-
-Never invent a title.
-
-============================================================
-REQUIRED CONTENT
-============================================================
-
-1. Research Landscape
-
-Start with one concise paragraph explaining:
-
-- the overall research area
-- the common problem addressed
-- why the problem matters
-- the general direction represented by the selected studies
-
-2. Research Focus
-
-Explain how the research objectives differ or overlap.
-
-Identify common themes and important differences.
-
-3. Methodological Synthesis
-
-Compare:
-
-- research approaches
-- architectures
-- algorithms
-- experimental designs
-- preprocessing
-- training strategies
-- validation approaches
-
-Focus on meaningful differences rather than listing everything.
-
-4. Data and Experimental Settings
-
-Compare datasets and data characteristics when supported.
-
-Mention:
-
-- dataset type
-- modality
-- sample size
-- patient/population characteristics
-- annotations
-- train/test design
-
-Only include details supported by evidence.
-
-5. Findings
-
-Synthesize the major findings.
-
-If numerical metrics are available, preserve them accurately.
-
-Explain what the findings mean rather than merely listing numbers.
-
-6. Contributions
-
-Explain how the papers contribute to the field.
-
-Highlight complementary contributions where appropriate.
-
-7. Limitations
-
-Discuss limitations explicitly reported by the studies.
-
-Do not invent limitations.
-
-8. Comparative Synthesis
-
-This is one of the most important sections.
-
-Clearly explain:
-
-- what the papers have in common
-- how their methods differ
-- how their datasets differ
-- how their findings compare
-- which approaches appear complementary
-- where direct comparison is difficult
-
-9. Research Gap
-
-Only identify a research gap if the combined evidence supports it.
-
-A valid gap may involve:
-
-- an unresolved problem
-- a limitation shared across studies
-- insufficient generalization
-- missing evaluation
-- inconsistent findings
-- an unexplored combination of methods
-- a population or dataset not adequately studied
-
-Do NOT invent a gap.
-
-If the evidence is insufficient, explicitly say:
-
-"The available evidence is insufficient to establish a
-definitive research gap."
-
-10. Conclusion
-
-End with one concise paragraph describing the overall state
-of the research represented by the selected papers.
-
-============================================================
-WRITING REQUIREMENTS
-============================================================
-
-Use professional graduate-level academic English.
-
-Prefer clear paragraphs over excessive bullet points.
-
-Keep the answer concise but substantive.
-
-Avoid unnecessary repetition.
-
-Do not repeat the same finding in several sections.
-
-Use transitions such as:
-
-"Similarly..."
-"In contrast..."
-"However..."
-"Compared with..."
-"Collectively..."
-"Taken together..."
-"Despite these advances..."
-"An important distinction is..."
-
-Use these only when supported by the evidence.
-
-============================================================
-IMPORTANT QUALITY RULE
-============================================================
-
-Think about the relationship between the papers before writing.
-
-The output should demonstrate that the system understood the
-research literature rather than simply extracting sentences.
-
-The review should be useful to a researcher who wants to:
-
-- understand the field quickly
-- compare selected papers
-- identify methodological trends
-- understand important findings
-- recognize limitations
-- identify possible future research directions
-
-Do not mention:
-
-- LLM
-- prompt
-- embeddings
-- vector database
-- retrieval
-- chunks
-- internal system processing
-- system instructions
-
-Do not expose chain-of-thought.
-
-============================================================
-FORMAT
-============================================================
-
-Use this structure:
-
-# Literature Review
-
-[Introductory synthesis paragraph]
-
-## Research Focus
-
-[Connected academic paragraphs]
-
-## Methodological Synthesis
-
-[Connected academic paragraphs]
-
-## Data and Experimental Settings
-
-[Connected academic paragraphs]
-
-## Findings and Contributions
-
-[Connected academic paragraphs]
-
-## Comparative Synthesis
-
-[Connected academic paragraphs]
-
-## Limitations and Research Gap
-
-[Connected academic paragraphs]
-
-## Conclusion
-
-[One concise concluding paragraph]
-
-Do not make the answer unnecessarily long.
-
-Aim for approximately 700–1200 words when enough evidence exists.
-
-For a single paper, produce a shorter focused review rather than
-pretending that a multi-paper comparison exists.
-
-For multiple papers, prioritize cross-paper synthesis.
-
-SELECTED PAPER IDS:
-{paper_labels}
-"""
-
-    # ============================================================
-    # PUBLIC GENERATE METHOD
+    # PUBLIC API
     # ============================================================
 
     def generate(
@@ -986,66 +116,60 @@ SELECTED PAPER IDS:
 
         Existing backend contract is preserved:
 
-            {
-                "paper_ids": [...],
-                "papers_count": ...,
-                "review": "...",
-                "sources": [...],
-                "source_count": ...,
-                "generation_status": "..."
-            }
+        {
+            "paper_ids": [...],
+            "papers_count": ...,
+            "review": "...",
+            "sources": [...],
+            "source_count": ...,
+            "generation_status": "..."
+        }
         """
 
-        if not paper_ids:
+        # --------------------------------------------------------
+        # Normalize paper IDs
+        # --------------------------------------------------------
 
-            raise ValueError(
-                "At least one paper is required."
+        unique_paper_ids = (
+            self._normalize_ids(
+                paper_ids
             )
+        )
 
         # --------------------------------------------------------
-        # Normalize IDs
+        # Validation
         # --------------------------------------------------------
-
-        unique_paper_ids = []
-
-        for value in paper_ids:
-
-            try:
-                paper_id = int(
-                    value
-                )
-            except (
-                TypeError,
-                ValueError,
-            ):
-                continue
-
-            if paper_id not in unique_paper_ids:
-
-                unique_paper_ids.append(
-                    paper_id
-                )
 
         if not unique_paper_ids:
 
             raise ValueError(
-                "No valid paper IDs were provided."
+                "At least one valid paper is required "
+                "for a literature review."
             )
 
-        # Keep the feature lightweight.
-        if len(unique_paper_ids) > 10:
+        if (
+            len(unique_paper_ids)
+            > self.MAX_PAPERS
+        ):
 
             raise ValueError(
                 "You can select a maximum of 10 papers."
             )
 
         print(
-            "Literature review | Papers: "
-            f"{len(unique_paper_ids)}"
+            "=================================================="
+        )
+
+        print(
+            "ResearchGPT | Literature Review"
+        )
+
+        print(
+            f"Selected papers: {unique_paper_ids}"
         )
 
         # --------------------------------------------------------
-        # Retrieve evidence
+        # Retrieve balanced evidence
         # --------------------------------------------------------
 
         evidence_by_paper = (
@@ -1054,114 +178,89 @@ SELECTED PAPER IDS:
             )
         )
 
-        total_evidence = sum(
-            len(
-                evidence_by_paper.get(
-                    paper_id,
-                    [],
-                )
-            )
-            for paper_id in unique_paper_ids
-        )
-
-        print(
-            "Literature review | Total evidence: "
-            f"{total_evidence}"
-        )
-
         # --------------------------------------------------------
-        # Build context
+        # Build compact context
         # --------------------------------------------------------
 
         evidence_context = (
             self._build_context(
-                unique_paper_ids,
-                evidence_by_paper,
+                paper_ids=unique_paper_ids,
+                evidence_by_paper=evidence_by_paper,
             )
         )
 
         # --------------------------------------------------------
-        # Generate prompt
+        # Build academic prompt
         # --------------------------------------------------------
 
-        prompt = self._build_prompt(
-            unique_paper_ids,
-            evidence_context,
+        prompt = (
+            self._build_prompt(
+                paper_ids=unique_paper_ids,
+                evidence_context=evidence_context,
+            )
         )
 
         # --------------------------------------------------------
-        # LLM generation
+        # Generate review
         # --------------------------------------------------------
 
-        answer = None
+        answer = (
+            self._call_llm(
+                prompt
+            )
+        )
 
         generation_status = (
             "ai_generated"
         )
 
-        try:
-
-            print(
-                "Literature review | "
-                "Generating academic synthesis..."
-            )
-
-            answer = chat_service._call_llm(
-                prompt,
-                max_tokens=1800,
-            )
-
-        except Exception as exc:
-
-            print(
-                "Literature review | "
-                f"Generation failed: {exc}"
-            )
-
         # --------------------------------------------------------
-        # Retry with smaller response
+        # Retry with compact prompt
         # --------------------------------------------------------
 
         if not answer:
 
-            try:
+            print(
+                "ResearchGPT | Literature review "
+                "generation failed. Retrying..."
+            )
 
-                print(
-                    "Literature review | "
-                    "Retrying with compact generation..."
-                )
-
-                compact_prompt = (
-                    prompt
-                    + """
+            compact_prompt = (
+                prompt
+                + """
 
 IMPORTANT:
-Generate a more concise version.
-Prioritize comparative synthesis, findings,
-limitations, and research gap.
+Produce a more concise version of the literature
+review while preserving the most important:
+
+- research trends
+- methodological differences
+- datasets
+- important findings
+- contributions
+- limitations
+- research gaps
+
+Do not omit important numerical results when
+they are explicitly supported.
 """
-                )
+            )
 
-                answer = chat_service._call_llm(
+            answer = (
+                self._call_llm(
                     compact_prompt,
-                    max_tokens=1100,
+                    max_tokens=1500,
                 )
-
-            except Exception as exc:
-
-                print(
-                    "Literature review | "
-                    f"Retry failed: {exc}"
-                )
+            )
 
         # --------------------------------------------------------
-        # Fallback
+        # Evidence fallback
         # --------------------------------------------------------
 
         if not answer:
 
             print(
-                "Literature review | "
+                "ResearchGPT | LLM unavailable. "
                 "Using evidence-grounded fallback."
             )
 
@@ -1169,17 +268,21 @@ limitations, and research gap.
                 "evidence_fallback"
             )
 
-            answer = self._build_fallback_review(
-                unique_paper_ids,
-                evidence_by_paper,
+            answer = (
+                self._build_fallback_review(
+                    paper_ids=unique_paper_ids,
+                    evidence_by_paper=evidence_by_paper,
+                )
             )
 
         # --------------------------------------------------------
-        # Clean response
+        # Clean
         # --------------------------------------------------------
 
-        answer = self._clean_llm_output(
-            answer
+        answer = (
+            self._clean_output(
+                answer
+            )
         )
 
         if not answer:
@@ -1188,62 +291,1821 @@ limitations, and research gap.
                 "evidence_fallback"
             )
 
-            answer = self._build_fallback_review(
-                unique_paper_ids,
-                evidence_by_paper,
+            answer = (
+                self._build_fallback_review(
+                    paper_ids=unique_paper_ids,
+                    evidence_by_paper=evidence_by_paper,
+                )
             )
 
         # --------------------------------------------------------
-        # Sources for frontend
+        # Sources
         # --------------------------------------------------------
 
-        sources = []
-
-        for paper_id in unique_paper_ids:
-
-            for item in evidence_by_paper.get(
-                paper_id,
-                [],
-            ):
-
-                sources.append(
-                    {
-                        "paper_id": paper_id,
-                        "category": item.get(
-                            "category",
-                            "",
-                        ),
-                        "text": item.get(
-                            "text",
-                            "",
-                        ),
-                        "score": item.get(
-                            "score",
-                            0.0,
-                        ),
-                    }
-                )
+        sources = (
+            self._build_sources(
+                paper_ids=unique_paper_ids,
+                evidence_by_paper=evidence_by_paper,
+            )
+        )
 
         # --------------------------------------------------------
         # Final response
         # --------------------------------------------------------
 
-        return {
-            "paper_ids": unique_paper_ids,
-            "papers_count": len(
-                unique_paper_ids
-            ),
-            "review": answer,
-            "sources": sources,
-            "source_count": len(
-                sources
-            ),
-            "generation_status": generation_status,
+        result = {
+
+            "paper_ids":
+                unique_paper_ids,
+
+            "papers_count":
+                len(unique_paper_ids),
+
+            "review":
+                answer,
+
+            "sources":
+                sources,
+
+            "source_count":
+                len(sources),
+
+            "generation_status":
+                generation_status,
         }
+
+        print(
+            "ResearchGPT | Literature Review "
+            f"completed | {generation_status}"
+        )
+
+        print(
+            "=================================================="
+        )
+
+        return result
+
+    # ============================================================
+    # NORMALIZE IDS
+    # ============================================================
+
+    def _normalize_ids(
+        self,
+        paper_ids: List[int],
+    ) -> List[int]:
+
+        normalized = []
+
+        for value in paper_ids or []:
+
+            try:
+
+                paper_id = int(
+                    value
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+
+                continue
+
+            if (
+                paper_id > 0
+                and paper_id not in normalized
+            ):
+
+                normalized.append(
+                    paper_id
+                )
+
+        return normalized
+
+    # ============================================================
+    # TEXT CLEANING
+    # ============================================================
+
+    def _clean_text(
+        self,
+        value: Any,
+    ) -> str:
+
+        if value is None:
+
+            return ""
+
+        text = str(
+            value
+        )
+
+        text = (
+            text
+            .replace(
+                "\x00",
+                " ",
+            )
+            .replace(
+                "\r\n",
+                "\n",
+            )
+            .replace(
+                "\r",
+                "\n",
+            )
+        )
+
+        # Preserve readable paragraph boundaries.
+        paragraphs = []
+
+        for paragraph in text.split(
+            "\n"
+        ):
+
+            cleaned = " ".join(
+                paragraph.split()
+            ).strip()
+
+            if cleaned:
+
+                paragraphs.append(
+                    cleaned
+                )
+
+        return "\n".join(
+            paragraphs
+        ).strip()
+
+    # ============================================================
+    # NORMALIZE TEXT
+    # ============================================================
+
+    def _normalize_text(
+        self,
+        text: str,
+    ) -> str:
+
+        return (
+            " ".join(
+                text.lower().split()
+            )
+        )
+
+    # ============================================================
+    # DUPLICATE DETECTION
+    # ============================================================
+
+    def _is_duplicate(
+        self,
+        text: str,
+        existing: List[str],
+    ) -> bool:
+
+        normalized = (
+            self._normalize_text(
+                text
+            )
+        )
+
+        if not normalized:
+
+            return True
+
+        words_a = set(
+            normalized.split()
+        )
+
+        for old in existing:
+
+            old_normalized = (
+                self._normalize_text(
+                    old
+                )
+            )
+
+            if (
+                normalized
+                == old_normalized
+            ):
+
+                return True
+
+            words_b = set(
+                old_normalized.split()
+            )
+
+            if (
+                len(words_a) < 25
+                or len(words_b) < 25
+            ):
+
+                continue
+
+            union = (
+                words_a
+                | words_b
+            )
+
+            if not union:
+
+                continue
+
+            similarity = (
+                len(
+                    words_a
+                    & words_b
+                )
+                / len(union)
+            )
+
+            if similarity >= 0.88:
+
+                return True
+
+        return False
+
+    # ============================================================
+    # EXTRACT PAPER ID
+    # ============================================================
+
+    def _extract_paper_id(
+        self,
+        item: Dict[str, Any],
+    ) -> Optional[int]:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            return None
+
+        possible_keys = (
+            "paper_id",
+            "paperId",
+            "document_id",
+            "documentId",
+        )
+
+        containers = [
+            item,
+            item.get(
+                "metadata"
+            ),
+            item.get(
+                "payload"
+            ),
+            item.get(
+                "meta"
+            ),
+        ]
+
+        for container in containers:
+
+            if not isinstance(
+                container,
+                dict,
+            ):
+
+                continue
+
+            for key in possible_keys:
+
+                value = (
+                    container.get(
+                        key
+                    )
+                )
+
+                if value is None:
+
+                    continue
+
+                try:
+
+                    return int(
+                        value
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+
+                    continue
+
+        return None
+
+    # ============================================================
+    # EXTRACT PAPER NAME
+    # ============================================================
+
+    def _extract_paper_name(
+        self,
+        item: Dict[str, Any],
+    ) -> Optional[str]:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            return None
+
+        possible_keys = (
+            "paper_name",
+            "paper_title",
+            "title",
+            "document_title",
+            "filename",
+            "file_name",
+            "name",
+        )
+
+        containers = [
+            item,
+            item.get(
+                "metadata"
+            ),
+            item.get(
+                "payload"
+            ),
+            item.get(
+                "meta"
+            ),
+        ]
+
+        for container in containers:
+
+            if not isinstance(
+                container,
+                dict,
+            ):
+
+                continue
+
+            for key in possible_keys:
+
+                value = (
+                    container.get(
+                        key
+                    )
+                )
+
+                if isinstance(
+                    value,
+                    str,
+                ):
+
+                    value = (
+                        value.strip()
+                    )
+
+                    if value:
+
+                        return value
+
+        return None
+
+    # ============================================================
+    # EXTRACT TEXT
+    # ============================================================
+
+    def _extract_text(
+        self,
+        item: Dict[str, Any],
+    ) -> str:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            return ""
+
+        possible_keys = (
+            "text",
+            "content",
+            "chunk",
+            "page_content",
+            "document",
+            "body",
+            "snippet",
+        )
+
+        for key in possible_keys:
+
+            value = item.get(
+                key
+            )
+
+            if isinstance(
+                value,
+                str,
+            ):
+
+                cleaned = (
+                    self._clean_text(
+                        value
+                    )
+                )
+
+                if cleaned:
+
+                    return cleaned
+
+        return ""
+
+    # ============================================================
+    # SCORE
+    # ============================================================
+
+    def _get_score(
+        self,
+        item: Dict[str, Any],
+    ) -> float:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            return 0.0
+
+        for key in (
+            "score",
+            "similarity",
+            "relevance_score",
+            "rerank_score",
+        ):
+
+            value = item.get(
+                key
+            )
+
+            try:
+
+                return float(
+                    value
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+
+                continue
+
+        return 0.0
+
+    # ============================================================
+    # NORMALIZE SEARCH RESULT
+    # ============================================================
+
+    def _normalize_results(
+        self,
+        result: Any,
+    ) -> List[Dict[str, Any]]:
+
+        if result is None:
+
+            return []
+
+        if isinstance(
+            result,
+            list,
+        ):
+
+            return [
+                item
+                for item in result
+                if isinstance(
+                    item,
+                    dict,
+                )
+            ]
+
+        if isinstance(
+            result,
+            dict,
+        ):
+
+            for key in (
+                "results",
+                "sources",
+                "documents",
+                "chunks",
+                "evidence",
+                "data",
+            ):
+
+                value = result.get(
+                    key
+                )
+
+                if isinstance(
+                    value,
+                    list,
+                ):
+
+                    return [
+                        item
+                        for item in value
+                        if isinstance(
+                            item,
+                            dict,
+                        )
+                    ]
+
+            if self._extract_text(
+                result
+            ):
+
+                return [
+                    result
+                ]
+
+        return []
+
+    # ============================================================
+    # RETRIEVE EVIDENCE
+    # ============================================================
+
+    def _retrieve_evidence(
+        self,
+        paper_ids: List[int],
+    ) -> Dict[int, List[Dict[str, Any]]]:
+
+        evidence_by_paper = {
+            paper_id: []
+            for paper_id in paper_ids
+        }
+
+        print(
+            "ResearchGPT | Retrieving "
+            "balanced literature evidence..."
+        )
+
+        query = (
+            self.LITERATURE_QUERY
+        )
+
+        try:
+
+            result = (
+                self.multi_document_service.search(
+                    query=query,
+                    paper_ids=paper_ids,
+                    limit_per_paper=(
+                        self.RETRIEVAL_LIMIT_PER_PAPER
+                    ),
+                )
+            )
+
+        except Exception as exc:
+
+            print(
+                "ResearchGPT | Literature "
+                f"retrieval failed: {exc}"
+            )
+
+            return evidence_by_paper
+
+        results = (
+            self._normalize_results(
+                result
+            )
+        )
+
+        # --------------------------------------------------------
+        # Assign results to papers
+        # --------------------------------------------------------
+
+        for item in results:
+
+            paper_id = (
+                self._extract_paper_id(
+                    item
+                )
+            )
+
+            if paper_id is None:
+
+                continue
+
+            if paper_id not in (
+                evidence_by_paper
+            ):
+
+                continue
+
+            text = (
+                self._extract_text(
+                    item
+                )
+            )
+
+            if not text:
+
+                continue
+
+            existing = [
+                x.get(
+                    "text",
+                    "",
+                )
+                for x in evidence_by_paper[
+                    paper_id
+                ]
+            ]
+
+            if self._is_duplicate(
+                text,
+                existing,
+            ):
+
+                continue
+
+            paper_name = (
+                self._extract_paper_name(
+                    item
+                )
+            )
+
+            evidence_by_paper[
+                paper_id
+            ].append(
+                {
+                    "paper_id":
+                        paper_id,
+
+                    "paper_name":
+                        (
+                            paper_name
+                            or
+                            f"Paper {paper_id}"
+                        ),
+
+                    "text":
+                        text,
+
+                    "score":
+                        self._get_score(
+                            item
+                        ),
+                }
+            )
+
+        # --------------------------------------------------------
+        # Balance and rank
+        # --------------------------------------------------------
+
+        for paper_id in paper_ids:
+
+            items = (
+                evidence_by_paper[
+                    paper_id
+                ]
+            )
+
+            items.sort(
+                key=self._get_score,
+                reverse=True,
+            )
+
+            selected = []
+
+            seen = []
+
+            for item in items:
+
+                text = item.get(
+                    "text",
+                    "",
+                )
+
+                if not text:
+
+                    continue
+
+                if self._is_duplicate(
+                    text,
+                    seen,
+                ):
+
+                    continue
+
+                seen.append(
+                    text
+                )
+
+                selected.append(
+                    {
+                        **item,
+                        "text":
+                            text[:1600],
+                    }
+                )
+
+                if len(
+                    selected
+                ) >= self.MAX_EVIDENCE_PER_PAPER:
+
+                    break
+
+            evidence_by_paper[
+                paper_id
+            ] = selected
+
+            print(
+                "ResearchGPT | "
+                f"Paper {paper_id} | "
+                f"{len(selected)} evidence items"
+            )
+
+        return evidence_by_paper
+
+    # ============================================================
+    # BUILD CONTEXT
+    # ============================================================
+
+    def _build_context(
+        self,
+        paper_ids: List[int],
+        evidence_by_paper: Dict[
+            int,
+            List[Dict[str, Any]],
+        ],
+    ) -> str:
+
+        sections = []
+
+        remaining = (
+            self.MAX_CONTEXT_CHARS
+        )
+
+        for index, paper_id in enumerate(
+            paper_ids,
+            start=1,
+        ):
+
+            items = (
+                evidence_by_paper.get(
+                    paper_id,
+                    [],
+                )
+            )
+
+            paper_name = (
+                items[0].get(
+                    "paper_name",
+                    f"Paper {paper_id}",
+                )
+                if items
+                else f"Paper {paper_id}"
+            )
+
+            header = (
+                "\n"
+                + "=" * 65
+                + "\n"
+                + f"PAPER {index}\n"
+                + f"Paper ID: {paper_id}\n"
+                + f"Paper Name: {paper_name}\n"
+                + "=" * 65
+                + "\n"
+            )
+
+            if len(header) >= remaining:
+
+                break
+
+            sections.append(
+                header
+            )
+
+            remaining -= len(
+                header
+            )
+
+            if not items:
+
+                missing = (
+                    "No relevant paper evidence "
+                    "was identified.\n"
+                )
+
+                if len(missing) < remaining:
+
+                    sections.append(
+                        missing
+                    )
+
+                    remaining -= len(
+                        missing
+                    )
+
+                continue
+
+            paper_chars = 0
+
+            for item_index, item in enumerate(
+                items,
+                start=1,
+            ):
+
+                text = (
+                    self._clean_text(
+                        item.get(
+                            "text",
+                            "",
+                        )
+                    )
+                )
+
+                if not text:
+
+                    continue
+
+                available = min(
+                    self.MAX_CHARS_PER_PAPER
+                    - paper_chars,
+                    remaining
+                    - 120,
+                )
+
+                if available <= 200:
+
+                    break
+
+                text = text[
+                    :available
+                ]
+
+                block = (
+                    f"\nEvidence {item_index}:\n"
+                    f"{text}\n"
+                )
+
+                sections.append(
+                    block
+                )
+
+                block_length = len(
+                    block
+                )
+
+                paper_chars += (
+                    block_length
+                )
+
+                remaining -= (
+                    block_length
+                )
+
+                if (
+                    paper_chars
+                    >= self.MAX_CHARS_PER_PAPER
+                ):
+
+                    break
+
+            if remaining <= 300:
+
+                break
+
+        return "".join(
+            sections
+        )[
+            :self.MAX_CONTEXT_CHARS
+        ]
+
+    # ============================================================
+    # BUILD PROMPT
+    # ============================================================
+
+    def _build_prompt(
+        self,
+        paper_ids: List[int],
+        evidence_context: str,
+    ) -> str:
+
+        paper_list = "\n".join(
+            f"- Paper {index}: ID {paper_id}"
+            for index, paper_id
+            in enumerate(
+                paper_ids,
+                start=1,
+            )
+        )
+
+        return f"""
+You are an expert academic research assistant
+specializing in systematic literature synthesis.
+
+You have been given evidence from
+{len(paper_ids)} selected research papers.
+
+Your task is to write a coherent,
+graduate-level academic literature review.
+
+============================================================
+SELECTED PAPERS
+============================================================
+
+{paper_list}
+
+============================================================
+PAPER MATERIAL
+============================================================
+
+{evidence_context}
+
+============================================================
+PRIMARY OBJECTIVE
+============================================================
+
+Synthesize the selected studies into a literature review.
+
+Do NOT simply produce a paper-by-paper summary.
+
+Instead, identify:
+
+- common research themes,
+- differences in research objectives,
+- methodological trends,
+- datasets and data characteristics,
+- model and algorithm trends,
+- major findings,
+- complementary approaches,
+- limitations,
+- unresolved issues,
+- evidence-supported research gaps,
+- future research directions.
+
+The reader should be able to understand the
+research landscape represented by the selected
+papers after reading the review.
+
+============================================================
+EVIDENCE RULES
+============================================================
+
+The supplied paper material is the factual basis
+for paper-specific claims.
+
+You MUST NOT invent:
+
+- authors,
+- publication years,
+- datasets,
+- sample sizes,
+- patient numbers,
+- model names,
+- algorithms,
+- metrics,
+- numerical results,
+- experimental settings,
+- contributions,
+- limitations,
+- future work.
+
+If a requested detail is not available, write:
+
+"Not identified in the available paper evidence."
+
+You may use general academic knowledge only to
+explain terminology or clarify why a reported
+methodological difference is meaningful.
+
+Do not use general knowledge to fabricate
+paper-specific information.
+
+============================================================
+REQUIRED STRUCTURE
+============================================================
+
+# Literature Review
+
+Start with a strong introductory synthesis that
+describes the research area represented by the
+selected studies.
+
+Do not begin with a generic definition of the field.
+
+## 1. Research Focus and Objectives
+
+Explain what research problems the studies address.
+
+Synthesize the objectives across papers and highlight
+important differences.
+
+Avoid repetitive paper-by-paper descriptions.
+
+## 2. Methodological Approaches
+
+Compare the major methodological approaches.
+
+Discuss:
+
+- research design,
+- experimental workflow,
+- preprocessing,
+- training,
+- validation,
+- testing,
+- methodological frameworks,
+- important architectural differences.
+
+Focus on meaningful methodological trends.
+
+## 3. Datasets and Experimental Data
+
+Synthesize the datasets and data sources used.
+
+Mention:
+
+- dataset names,
+- data modalities,
+- sample characteristics,
+- population,
+- annotations,
+- train/validation/test splits,
+
+ONLY when supported by the supplied material.
+
+Explain how differences in data may affect
+interpretation of results when such an interpretation
+is academically justified.
+
+## 4. Models and Computational Techniques
+
+Discuss important models, algorithms, architectures,
+and computational techniques.
+
+Do not create a long model inventory.
+
+Focus on techniques that matter to the studies'
+research contributions.
+
+## 5. Results and Research Findings
+
+Synthesize the major findings across studies.
+
+Preserve explicit numerical metrics accurately.
+
+For example, if the evidence reports:
+
+- accuracy,
+- precision,
+- recall,
+- F1,
+- AUC,
+- Dice,
+- IoU,
+- sensitivity,
+- specificity,
+
+retain those values accurately.
+
+Do not invent missing metrics.
+
+Explain important differences in reported outcomes
+when the evidence supports such interpretation.
+
+## 6. Contributions and Novelty
+
+Explain what the studies contribute to the field.
+
+Discuss whether the contributions:
+
+- complement one another,
+- address different aspects of the problem,
+- improve existing approaches,
+- introduce methodological innovation.
+
+Do not claim novelty unless supported by the paper material.
+
+## 7. Limitations and Future Directions
+
+Discuss limitations explicitly reported by the studies.
+
+Then synthesize explicitly reported future directions.
+
+Do not invent limitations simply because a method
+might theoretically have one.
+
+## 8. Comparative Synthesis
+
+This section is extremely important.
+
+Move beyond paper-by-paper description.
+
+Explain:
+
+- major similarities,
+- important differences,
+- methodological trends,
+- data differences,
+- differences in objectives,
+- differences in findings,
+- complementary strengths,
+- unresolved methodological issues.
+
+Use connected academic paragraphs.
+
+## 9. Research Gap
+
+Identify a research gap ONLY if it can be reasonably
+supported by the supplied literature.
+
+A research gap may arise from:
+
+- consistent limitations across studies,
+- an underexplored dataset or population,
+- a methodological limitation,
+- insufficient generalization,
+- conflicting findings,
+- missing evaluation,
+- an unresolved research problem.
+
+If the evidence does not support a reliable gap,
+write:
+
+"An evidence-supported research gap could not be
+established from the available paper material."
+
+Do not manufacture a gap.
+
+## 10. Overall Literature Assessment
+
+Conclude with a concise but substantive synthesis
+of the research landscape represented by the selected
+papers.
+
+Explain what the combined literature suggests
+for future research.
+
+============================================================
+ACADEMIC WRITING REQUIREMENTS
+============================================================
+
+Use professional academic English.
+
+The review should sound like a section of a
+graduate-level research thesis or academic paper.
+
+Use:
+
+- connected paragraphs,
+- analytical transitions,
+- precise terminology,
+- comparative reasoning,
+- evidence-grounded claims.
+
+Avoid:
+
+- repetitive summaries,
+- excessive bullet lists,
+- unnecessary tables,
+- generic textbook explanations,
+- unsupported claims.
+
+Useful transitions include:
+
+"Similarly,"
+"In contrast,"
+"Compared with,"
+"However,"
+"Collectively,"
+"Taken together,"
+"These findings suggest,"
+"An important distinction is,"
+"Across the selected studies"
+
+Use them naturally rather than mechanically.
+
+============================================================
+DO NOT MENTION INTERNAL SYSTEM DETAILS
+============================================================
+
+Do not mention:
+
+- LLM,
+- language model,
+- prompt,
+- embeddings,
+- Qdrant,
+- retrieval,
+- chunks,
+- vector database,
+- internal processing,
+- system instructions,
+- similarity scores.
+
+Do not expose hidden reasoning.
+
+Return ONLY the final academic literature review.
+"""
+
+    # ============================================================
+    # CALL LLM
+    # ============================================================
+
+    def _call_llm(
+        self,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+    ) -> Optional[str]:
+
+        method = getattr(
+            self.chat_service,
+            "_call_llm",
+            None,
+        )
+
+        if not callable(
+            method
+        ):
+
+            print(
+                "ResearchGPT | "
+                "ChatService._call_llm unavailable."
+            )
+
+            return None
+
+        tokens = (
+            max_tokens
+            or self.LLM_MAX_TOKENS
+        )
+
+        # --------------------------------------------------------
+        # Normal call
+        # --------------------------------------------------------
+
+        try:
+
+            response = method(
+                prompt,
+                max_tokens=tokens,
+            )
+
+            if isinstance(
+                response,
+                str,
+            ):
+
+                response = (
+                    response.strip()
+                )
+
+                if response:
+
+                    return response
+
+            if isinstance(
+                response,
+                dict,
+            ):
+
+                for key in (
+                    "answer",
+                    "response",
+                    "content",
+                    "text",
+                    "message",
+                ):
+
+                    value = response.get(
+                        key
+                    )
+
+                    if isinstance(
+                        value,
+                        str,
+                    ):
+
+                        value = (
+                            value.strip()
+                        )
+
+                        if value:
+
+                            return value
+
+        except TypeError:
+
+            # Compatibility with older
+            # ChatService implementations.
+            try:
+
+                response = method(
+                    prompt
+                )
+
+                if isinstance(
+                    response,
+                    str,
+                ):
+
+                    return (
+                        response.strip()
+                    )
+
+            except Exception as exc:
+
+                print(
+                    "ResearchGPT | "
+                    f"LLM compatibility call failed: {exc}"
+                )
+
+        except Exception as exc:
+
+            print(
+                "ResearchGPT | "
+                f"Literature generation failed: {exc}"
+            )
+
+        return None
+
+    # ============================================================
+    # CLEAN OUTPUT
+    # ============================================================
+
+    def _clean_output(
+        self,
+        text: Any,
+    ) -> str:
+
+        if text is None:
+
+            return ""
+
+        text = str(
+            text
+        ).strip()
+
+        # Remove accidental markdown code fences.
+        text = re.sub(
+            r"^```(?:markdown|md|text)?\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        text = re.sub(
+            r"\s*```$",
+            "",
+            text,
+        )
+
+        # Remove hidden reasoning tags if returned
+        # by a model.
+        text = re.sub(
+            r"<think>.*?</think>",
+            "",
+            text,
+            flags=(
+                re.IGNORECASE
+                | re.DOTALL
+            ),
+        )
+
+        # Remove accidental assistant prefixes.
+        prefixes = [
+            "final answer:",
+            "final response:",
+            "assistant:",
+        ]
+
+        for prefix in prefixes:
+
+            if text.lower().startswith(
+                prefix
+            ):
+
+                text = (
+                    text[
+                        len(prefix):
+                    ]
+                    .strip()
+                )
+
+        # Normalize excessive blank lines.
+        text = re.sub(
+            r"\n{4,}",
+            "\n\n",
+            text,
+        )
+
+        return text.strip()
+
+    # ============================================================
+    # FALLBACK REVIEW
+    # ============================================================
+
+    def _build_fallback_review(
+        self,
+        paper_ids: List[int],
+        evidence_by_paper: Dict[
+            int,
+            List[Dict[str, Any]],
+        ],
+    ) -> str:
+
+        sections = []
+
+        sections.append(
+            "# Literature Review\n\n"
+        )
+
+        sections.append(
+            (
+                "The selected research papers address "
+                "the research themes represented by the "
+                "available paper material. The following "
+                "synthesis is restricted to information "
+                "supported by the available material.\n"
+            )
+        )
+
+        # --------------------------------------------------------
+        # Research focus
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 1. Research Focus and Objectives\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "objective",
+                "research",
+                "problem",
+                "aim",
+                "motivation",
+                "purpose",
+            ],
+            max_items=2,
+        )
+
+        # --------------------------------------------------------
+        # Methodology
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 2. Methodological Approaches\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "method",
+                "methodology",
+                "model",
+                "architecture",
+                "framework",
+                "approach",
+                "pipeline",
+                "experiment",
+            ],
+            max_items=2,
+        )
+
+        # --------------------------------------------------------
+        # Dataset
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 3. Datasets and Experimental Data\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "dataset",
+                "data",
+                "sample",
+                "patient",
+                "population",
+                "images",
+                "annotations",
+            ],
+            max_items=2,
+        )
+
+        # --------------------------------------------------------
+        # Models
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 4. Models and Computational Techniques\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "model",
+                "network",
+                "cnn",
+                "transformer",
+                "algorithm",
+                "deep learning",
+                "machine learning",
+                "architecture",
+            ],
+            max_items=2,
+        )
+
+        # --------------------------------------------------------
+        # Results
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 5. Results and Research Findings\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "result",
+                "finding",
+                "accuracy",
+                "precision",
+                "recall",
+                "f1",
+                "auc",
+                "dice",
+                "iou",
+                "sensitivity",
+                "specificity",
+                "performance",
+            ],
+            max_items=2,
+        )
+
+        # --------------------------------------------------------
+        # Contributions
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 6. Contributions and Novelty\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "contribution",
+                "novel",
+                "novelty",
+                "innovation",
+                "proposed",
+                "advancement",
+            ],
+            max_items=2,
+        )
+
+        # --------------------------------------------------------
+        # Limitations
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 7. Limitations and Future Directions\n\n"
+        )
+
+        self._append_category_fallback(
+            sections=sections,
+            paper_ids=paper_ids,
+            evidence_by_paper=evidence_by_paper,
+            category_keywords=[
+                "limitation",
+                "weakness",
+                "constraint",
+                "challenge",
+                "future",
+                "recommendation",
+                "extension",
+            ],
+            max_items=3,
+        )
+
+        # --------------------------------------------------------
+        # Comparative synthesis
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n## 8. Comparative Synthesis\n\n"
+        )
+
+        sections.append(
+            (
+                "The available material provides evidence "
+                "concerning the objectives, methods, datasets, "
+                "models, and findings represented by the "
+                "selected studies. A definitive cross-study "
+                "comparison should be restricted to similarities "
+                "and differences directly supported by the "
+                "available material."
+            )
+        )
+
+        # --------------------------------------------------------
+        # Research gap
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n\n## 9. Research Gap\n\n"
+        )
+
+        sections.append(
+            (
+                "An evidence-supported research gap could "
+                "not be established from the available "
+                "paper material alone. Further examination "
+                "of the complete studies may be required "
+                "to establish a reliable research gap."
+            )
+        )
+
+        # --------------------------------------------------------
+        # Overall assessment
+        # --------------------------------------------------------
+
+        sections.append(
+            "\n\n## 10. Overall Literature Assessment\n\n"
+        )
+
+        sections.append(
+            (
+                "Overall, the selected papers provide "
+                "evidence concerning their respective "
+                "research objectives, methodological "
+                "approaches, datasets, computational "
+                "techniques, findings, contributions, "
+                "limitations, and future directions. "
+                "The combined material provides a structured "
+                "overview of the represented research area, "
+                "while conclusions beyond the available "
+                "paper-specific information should be "
+                "treated cautiously."
+            )
+        )
+
+        return "".join(
+            sections
+        )
+
+    # ============================================================
+    # FALLBACK CATEGORY HELPER
+    # ============================================================
+
+    def _append_category_fallback(
+        self,
+        sections: List[str],
+        paper_ids: List[int],
+        evidence_by_paper: Dict[
+            int,
+            List[Dict[str, Any]],
+        ],
+        category_keywords: List[str],
+        max_items: int = 2,
+    ) -> None:
+
+        for paper_id in paper_ids:
+
+            items = (
+                evidence_by_paper.get(
+                    paper_id,
+                    [],
+                )
+            )
+
+            matched = []
+
+            for item in items:
+
+                text = (
+                    self._clean_text(
+                        item.get(
+                            "text",
+                            "",
+                        )
+                    )
+                )
+
+                lower = (
+                    text.lower()
+                )
+
+                if any(
+                    keyword.lower()
+                    in lower
+                    for keyword
+                    in category_keywords
+                ):
+
+                    matched.append(
+                        item
+                    )
+
+                if len(
+                    matched
+                ) >= max_items:
+
+                    break
+
+            if not matched:
+
+                sections.append(
+                    f"Paper {paper_id}: "
+                    "Not identified in the available "
+                    "paper evidence.\n\n"
+                )
+
+                continue
+
+            sections.append(
+                f"Paper {paper_id}:\n"
+            )
+
+            for item in matched:
+
+                sections.append(
+                    f"- {item.get('text', '')}\n"
+                )
+
+            sections.append(
+                "\n"
+            )
+
+    # ============================================================
+    # BUILD SOURCES
+    # ============================================================
+
+    def _build_sources(
+        self,
+        paper_ids: List[int],
+        evidence_by_paper: Dict[
+            int,
+            List[Dict[str, Any]],
+        ],
+    ) -> List[Dict[str, Any]]:
+
+        sources = []
+
+        for paper_id in paper_ids:
+
+            for item in (
+                evidence_by_paper.get(
+                    paper_id,
+                    [],
+                )
+            ):
+
+                sources.append(
+                    {
+                        "paper_id":
+                            paper_id,
+
+                        "paper_name":
+                            item.get(
+                                "paper_name",
+                                f"Paper {paper_id}",
+                            ),
+
+                        "text":
+                            item.get(
+                                "text",
+                                "",
+                            ),
+
+                        "score":
+                            item.get(
+                                "score",
+                                0.0,
+                            ),
+                    }
+                )
+
+        return sources
 
 
 # ================================================================
-# GLOBAL SERVICE INSTANCE
+# SERVICE INSTANCE
 # ================================================================
 
 literature_review_service = (

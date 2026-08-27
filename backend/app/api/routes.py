@@ -77,9 +77,11 @@ from app.services.literature_review_service import (
 from app.services.research_gap_service import (
     research_gap_service,
 )
+
 from app.services.paper_writeup_service import (
     paper_writeup_service,
 )
+
 
 router = APIRouter()
 
@@ -114,6 +116,7 @@ class LiteratureReviewRequest(BaseModel):
 
 class ResearchGapRequest(BaseModel):
     paper_ids: List[int]
+
 
 class PaperWriteupRequest(BaseModel):
     paper_ids: List[int]
@@ -934,9 +937,11 @@ def generate_literature_review(
             ),
         )
 
+
 # ============================================================
-# RESEARCH GAP
+# RESEARCH GAP ANALYSIS
 # ============================================================
+
 
 @router.post(
     "/papers/research-gap"
@@ -959,32 +964,31 @@ def generate_research_gap(
         )
     )
 
-    if not unique_paper_ids:
+    if len(unique_paper_ids) < 1:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Select at least one paper "
-                "for research-gap analysis."
-            ),
+            detail="Select at least one paper for analysis.",
         )
 
     if len(unique_paper_ids) > 10:
         raise HTTPException(
             status_code=400,
+            detail="You can select a maximum of 10 papers.",
+        )
+
+    if len(unique_paper_ids) < 1:
+        raise HTTPException(
+            status_code=400,
             detail=(
-                "You can select a maximum "
-                "of 10 papers."
+                "Select at least one paper for research-gap analysis."
             ),
         )
 
     papers = (
         db.query(Paper)
         .filter(
-            Paper.id.in_(
-                unique_paper_ids
-            ),
-            Paper.user_id
-            == current_user.id,
+            Paper.id.in_(unique_paper_ids),
+            Paper.user_id == current_user.id,
         )
         .all()
     )
@@ -1003,34 +1007,25 @@ def generate_research_gap(
     if missing_ids:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "One or more selected papers "
-                "could not be found."
-            ),
+            detail="One or more selected papers could not be found.", 
         )
 
     try:
-
-        result = (
-            research_gap_service.generate(
-                paper_ids=unique_paper_ids
-            )
+        result = research_gap_service.generate(
+            paper_ids=unique_paper_ids
         )
 
         return result
 
-    except ValueError as exc:
-
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=str(exc),
+            detail=str(e),
         )
 
-    except Exception as exc:
-
+    except Exception as e:
         print(
-            "Research gap error:",
-            exc,
+            f"Research gap error: {e}"
         )
 
         raise HTTPException(
@@ -1039,8 +1034,6 @@ def generate_research_gap(
                 "Research gap generation failed."
             ),
         )
-
-
 # ============================================================
 # CITATION MANAGER
 # ============================================================
@@ -1084,16 +1077,13 @@ def generate_citation_manager(
     papers = (
         db.query(Paper)
         .filter(
-            Paper.id.in_(
-                unique_paper_ids
-            ),
-            Paper.user_id
-            == current_user.id,
+            Paper.id.in_(unique_paper_ids),
+            Paper.user_id == current_user.id,
         )
         .all()
     )
 
-    found_paper_ids = {
+    found_ids = {
         paper.id
         for paper in papers
     }
@@ -1101,27 +1091,23 @@ def generate_citation_manager(
     missing_ids = [
         paper_id
         for paper_id in unique_paper_ids
-        if paper_id not in found_paper_ids
+        if paper_id not in found_ids
     ]
 
     if missing_ids:
         raise HTTPException(
             status_code=404,
             detail=(
-                "One or more selected papers "
-                "could not be found."
+                f"Paper(s) not found: "
+                f"{missing_ids}"
             ),
         )
 
     try:
 
-        result = (
-            citation_manager_service.generate(
-                paper_ids=unique_paper_ids
-            )
+        return citation_manager_service.generate(
+            paper_ids=unique_paper_ids
         )
-
-        return result
 
     except ValueError as exc:
 
@@ -1144,10 +1130,10 @@ def generate_citation_manager(
             ),
         )
 
-
 # ============================================================
 # PAPER WRITE-UP
 # ============================================================
+
 
 @router.post(
     "/papers/writeup"
@@ -1159,24 +1145,12 @@ def generate_paper_writeup(
         get_current_user
     ),
 ):
-    """
-    Generate an evidence-grounded academic
-    write-up from selected research papers.
-
-    Supported types:
-
-        abstract
-        introduction
-        related_work
-        methodology
-        results_discussion
-        conclusion
-        full_paper
-    """
+    """Generate an evidence-grounded academic paper section."""
 
     unique_paper_ids = list(
         dict.fromkeys(
-            request.paper_ids
+            int(paper_id)
+            for paper_id in request.paper_ids
         )
     )
 
@@ -1189,148 +1163,52 @@ def generate_paper_writeup(
     if len(unique_paper_ids) > 10:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "You can select a maximum "
-                "of 10 papers."
-            ),
+            detail="You can select a maximum of 10 papers.",
         )
-
-    # --------------------------------------------------------
-    # Verify selected papers belong to current user
-    # --------------------------------------------------------
 
     papers = (
         db.query(Paper)
         .filter(
-            Paper.id.in_(
-                unique_paper_ids
-            ),
-            Paper.user_id
-            == current_user.id,
+            Paper.id.in_(unique_paper_ids),
+            Paper.user_id == current_user.id,
         )
         .all()
     )
 
-    found_paper_ids = {
-        paper.id
-        for paper in papers
-    }
-
+    found_ids = {paper.id for paper in papers}
     missing_ids = [
         paper_id
         for paper_id in unique_paper_ids
-        if paper_id not in found_paper_ids
+        if paper_id not in found_ids
     ]
 
     if missing_ids:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "One or more selected papers "
-                "could not be found."
-            ),
+            detail=f"Paper(s) not found: {missing_ids}",
         )
-
-    # --------------------------------------------------------
-    # Normalize write-up type
-    # --------------------------------------------------------
-
-    writeup_type = (
-        str(
-            request.writeup_type
-            or "introduction"
-        )
-        .strip()
-        .lower()
-        .replace(
-            "-",
-            "_",
-        )
-        .replace(
-            " ",
-            "_",
-        )
-    )
-
-    aliases = {
-        "intro": "introduction",
-        "related": "related_work",
-        "literature": "related_work",
-        "literature_review": "related_work",
-        "method": "methodology",
-        "methods": "methodology",
-        "results": "results_discussion",
-        "discussion": "results_discussion",
-        "full": "full_paper",
-        "paper": "full_paper",
-    }
-
-    writeup_type = aliases.get(
-        writeup_type,
-        writeup_type,
-    )
-
-    allowed_types = {
-        "abstract",
-        "introduction",
-        "related_work",
-        "methodology",
-        "results_discussion",
-        "conclusion",
-        "full_paper",
-    }
-
-    if writeup_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid write-up type. "
-                "Choose from: "
-                "abstract, introduction, "
-                "related_work, methodology, "
-                "results_discussion, conclusion, "
-                "full_paper."
-            ),
-        )
-
-    # --------------------------------------------------------
-    # Generate write-up
-    # --------------------------------------------------------
 
     try:
-
-        result = (
-            paper_writeup_service.generate(
-                paper_ids=unique_paper_ids,
-                writeup_type=writeup_type,
-                research_topic=(
-                    request.research_topic
-                ),
-                instructions=(
-                    request.instructions
-                ),
-            )
+        return paper_writeup_service.generate(
+            paper_ids=unique_paper_ids,
+            writeup_type=request.writeup_type,
+            research_topic=request.research_topic,
+            instructions=request.instructions,
         )
 
-        return result
-
     except ValueError as exc:
-
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         )
 
     except Exception as exc:
-
         print(
             "Paper Write-up error:",
             exc,
         )
-
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Paper Write-up generation failed."
-            ),
+            detail="Paper write-up generation failed.",
         )
+
