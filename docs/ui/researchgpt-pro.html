@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ResearchGPT – AI Research Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .sidebar-item { transition: all 0.15s ease; }
+    .sidebar-item:hover { background: rgba(99,102,241,0.06); }
+    .dark .sidebar-item:hover { background: rgba(99,102,241,0.15); }
+    .sidebar-item.active { background: #eef2ff; color: #4f46e5; font-weight: 600; }
+    .dark .sidebar-item.active { background: #312e81; color: #a5b4fc; }
+    .content-panel { display: none; }
+    .content-panel.active { display: block; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .dark ::-webkit-scrollbar-thumb { background: #475569; }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 dark:bg-slate-900 dark:text-slate-100 min-h-screen antialiased transition-colors">
+
+<div class="flex min-h-screen">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="w-[250px] bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col fixed h-full z-30">
+    <!-- Logo -->
+    <div class="h-14 px-4 flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-700">
+      <div class="w-8 h-8 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-[14px] leading-none">ResearchGPT</div>
+        <div class="text-[10px] text-slate-400 mt-0.5">AI Research Assistant</div>
+      </div>
+    </div>
+
+    <nav class="flex-1 px-3 py-3 overflow-y-auto text-[13px]">
+      <button onclick="showPage('dashboard')" class="sidebar-item active w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left mb-3" data-page="dashboard">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </button>
+
+      <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2.5 mb-1.5 mt-2">Research</div>
+      <button onclick="showPage('projects')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="projects">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+        My Projects
+      </button>
+      <button onclick="showPage('library')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="library">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        Library & Papers
+      </button>
+      <button onclick="showPage('chat')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="chat">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        AI Chat (RAG)
+      </button>
+      <button onclick="showPage('literature')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="literature">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Literature Review
+      </button>
+      <button onclick="showPage('gap')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="gap">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        Research Gap
+      </button>
+      <button onclick="showPage('compare')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="compare">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Paper Comparison
+      </button>
+      <button onclick="showPage('citation')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="citation">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+        Citation Manager
+      </button>
+
+      <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2.5 mb-1.5 mt-4">Write & Create</div>
+      <button onclick="showPage('proposal')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="proposal">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        Proposal Generator
+      </button>
+      <button onclick="showPage('writer')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="writer">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+        Paper Writer
+      </button>
+      <button onclick="showPage('reviewer')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="reviewer">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        AI Reviewer
+      </button>
+
+      <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2.5 mb-1.5 mt-4">Tools</div>
+      <button onclick="showPage('analytics')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="analytics">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Analytics
+      </button>
+      <button onclick="showPage('settings')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="settings">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Settings
+      </button>
+      <button onclick="showPage('help')" class="sidebar-item w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 dark:text-slate-300" data-page="help">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Help & Support
+      </button>
+    </nav>
+
+    <!-- Upgrade Card -->
+    <div class="mx-3 mb-4 p-4 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/50 dark:to-violet-950/50 border border-indigo-100 dark:border-indigo-900/50">
+      <div class="text-[13px] font-semibold mb-2">Upgrade to Pro</div>
+      <ul class="text-[11px] text-slate-600 dark:text-slate-300 space-y-1 mb-3">
+        <li class="flex items-center gap-1.5">✓ Unlimited AI chats</li>
+        <li class="flex items-center gap-1.5">✓ Advanced AI models</li>
+        <li class="flex items-center gap-1.5">✓ More storage & exports</li>
+      </ul>
+      <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] font-medium py-2 rounded-lg transition flex items-center justify-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+        Upgrade Now
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="flex-1 ml-[250px] flex flex-col min-h-screen">
+
+    <!-- Top Bar -->
+    <header class="h-14 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-5 flex items-center justify-between sticky top-0 z-20">
+      <div class="flex-1 max-w-xl">
+        <div class="relative">
+          <input type="text" placeholder="Search papers, topics, authors, keywords..." 
+                 class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg py-1.5 pl-9 pr-16 text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400">
+          <svg class="w-4 h-4 absolute left-3 top-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <kbd class="absolute right-2.5 top-1.5 text-[10px] text-slate-400 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 px-1.5 py-0.5 rounded">⌘ K</kbd>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 ml-4">
+        <button class="bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-medium px-4 py-1.5 rounded-lg transition">+ New Project</button>
+        
+        <!-- Notifications -->
+        <div class="relative">
+          <button onclick="toggleNotifications()" class="relative p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <span class="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">3</span>
+          </button>
+          <div id="notifications-panel" class="hidden absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50">
+            <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+              <span class="text-[13px] font-semibold">Notifications</span>
+              <button class="text-[11px] text-indigo-600 font-medium">Mark all read</button>
+            </div>
+            <div class="max-h-72 overflow-y-auto">
+              <div class="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b border-slate-50 dark:border-slate-700/50">
+                <div class="text-[13px] font-medium">3 papers uploaded successfully</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">2 hours ago</div>
+              </div>
+              <div class="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b border-slate-50 dark:border-slate-700/50">
+                <div class="text-[13px] font-medium">Literature review generated</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">4 hours ago</div>
+              </div>
+              <div class="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                <div class="text-[13px] font-medium">Research gap analysis completed</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">1 day ago</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Theme -->
+        <button onclick="toggleTheme()" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition">
+          <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </button>
+
+        <div class="flex items-center gap-2.5 pl-2 border-l border-slate-200 dark:border-slate-700">
+          <img src="https://ui-avatars.com/api/?name=Hassan+Iqbal&background=4f46e5&color=fff&bold=true" class="w-8 h-8 rounded-full">
+          <div class="text-[13px] leading-tight">
+            <div class="font-medium">Hassan Iqbal</div>
+            <div class="text-[11px] text-slate-400">Researcher</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-5 overflow-y-auto">
+
+      <!-- ===================== DASHBOARD ===================== -->
+      <div id="dashboard" class="content-panel active">
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+          <div class="xl:col-span-2 space-y-5">
+            <!-- Welcome -->
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <div>
+                <h1 class="text-xl font-semibold">Welcome back, Hassan! 👋</h1>
+                <p class="text-[13px] text-slate-500 mt-0.5">Let's accelerate your research with AI</p>
+              </div>
+              <div class="hidden md:flex items-center gap-3 bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-950/40 dark:to-violet-950/40 rounded-xl px-4 py-3 border border-indigo-100 dark:border-indigo-900/40">
+                <div class="text-[12px] text-slate-600 dark:text-slate-300 max-w-[180px] italic">"The best way to predict the future is to invent it." — Alan Kay</div>
+                <div class="text-4xl">🤖</div>
+              </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                <div class="text-[12px] text-slate-500 mb-1">Active Projects</div>
+                <div class="text-2xl font-semibold">12</div>
+                <div class="text-[11px] text-emerald-500 mt-1">↑ 2 this week</div>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                <div class="text-[12px] text-slate-500 mb-1">Papers Uploaded</div>
+                <div class="text-2xl font-semibold">145</div>
+                <div class="text-[11px] text-emerald-500 mt-1">↑ 18 this week</div>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                <div class="text-[12px] text-slate-500 mb-1">Literature Reviews</div>
+                <div class="text-2xl font-semibold">23</div>
+                <div class="text-[11px] text-emerald-500 mt-1">↑ 6 this week</div>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                <div class="text-[12px] text-slate-500 mb-1">AI Chats</div>
+                <div class="text-2xl font-semibold">324</div>
+                <div class="text-[11px] text-emerald-500 mt-1">↑ 42 this week</div>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                <div class="text-[12px] text-slate-500 mb-1">Saved Searches</div>
+                <div class="text-2xl font-semibold">56</div>
+                <div class="text-[11px] text-emerald-500 mt-1">↑ 9 this week</div>
+              </div>
+            </div>
+
+            <!-- Recent Projects -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                <h3 class="text-[13px] font-semibold">Recent Projects</h3>
+                <button onclick="showPage('projects')" class="text-[12px] text-indigo-600 font-medium">View all projects →</button>
+              </div>
+              <div class="divide-y divide-slate-50 dark:divide-slate-700/50">
+                <div class="px-5 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                  <div class="flex items-center gap-3 flex-1">
+                    <div class="w-9 h-9 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center">❤️</div>
+                    <div class="flex-1">
+                      <div class="text-[13px] font-medium">Heart Hypokinesia Detection using Echocardiography</div>
+                      <div class="text-[11px] text-slate-400 mb-1.5">Updated 2 hours ago · 24 Papers</div>
+                      <div class="w-full max-w-xs bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                        <div class="bg-violet-500 h-1.5 rounded-full" style="width:65%"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 ml-4">
+                    <span class="text-[11px] text-slate-400">65%</span>
+                    <button class="text-[12px] font-medium px-3 py-1 rounded-md border border-slate-200 dark:border-slate-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30">Open</button>
+                  </div>
+                </div>
+                <div class="px-5 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                  <div class="flex items-center gap-3 flex-1">
+                    <div class="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-[11px] font-bold">HEA</div>
+                    <div class="flex-1">
+                      <div class="text-[13px] font-medium">HEA Phase Stability Prediction (MPEAs)</div>
+                      <div class="text-[11px] text-slate-400 mb-1.5">Updated yesterday · 18 Papers</div>
+                      <div class="w-full max-w-xs bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                        <div class="bg-emerald-500 h-1.5 rounded-full" style="width:40%"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 ml-4">
+                    <span class="text-[11px] text-slate-400">40%</span>
+                    <button class="text-[12px] font-medium px-3 py-1 rounded-md border border-slate-200 dark:border-slate-600 hover:bg-indigo-50">Open</button>
+                  </div>
+                </div>
+                <div class="px-5 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                  <div class="flex items-center gap-3 flex-1">
+                    <div class="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-[11px] font-bold">NLP</div>
+                    <div class="flex-1">
+                      <div class="text-[13px] font-medium">NLP for Research Paper Summarization</div>
+                      <div class="text-[11px] text-slate-400 mb-1.5">Updated 2 days ago · 15 Papers</div>
+                      <div class="w-full max-w-xs bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                        <div class="bg-blue-500 h-1.5 rounded-full" style="width:30%"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 ml-4">
+                    <span class="text-[11px] text-slate-400">30%</span>
+                    <button class="text-[12px] font-medium px-3 py-1 rounded-md border border-slate-200 dark:border-slate-600 hover:bg-indigo-50">Open</button>
+                  </div>
+                </div>
+                <div class="px-5 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                  <div class="flex items-center gap-3 flex-1">
+                    <div class="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-sm">🖥️</div>
+                    <div class="flex-1">
+                      <div class="text-[13px] font-medium">Computer Vision for Medical Imaging</div>
+                      <div class="text-[11px] text-slate-400 mb-1.5">Updated 5 days ago · 12 Papers</div>
+                      <div class="w-full max-w-xs bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                        <div class="bg-amber-500 h-1.5 rounded-full" style="width:20%"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 ml-4">
+                    <span class="text-[11px] text-slate-400">20%</span>
+                    <button class="text-[12px] font-medium px-3 py-1 rounded-md border border-slate-200 dark:border-slate-600 hover:bg-indigo-50">Open</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Continue Where You Left Off -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                <h3 class="text-[13px] font-semibold">Continue Where You Left Off</h3>
+                <div class="flex gap-1">
+                  <button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">‹</button>
+                  <button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">›</button>
+                </div>
+              </div>
+              <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="border border-slate-200 dark:border-slate-700 rounded-xl p-3.5">
+                  <div class="flex items-center gap-2 mb-2"><span class="text-[10px] font-bold bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded">PDF</span><span class="text-[11px] text-slate-400">1.3 MB</span></div>
+                  <div class="text-[12px] font-medium mb-2">Attention Is All You Need.pdf</div>
+                  <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 mb-1.5"><div class="bg-indigo-500 h-1 rounded-full" style="width:65%"></div></div>
+                  <div class="flex justify-between text-[11px]"><span class="text-slate-400">65% Read</span><button class="text-indigo-600 font-medium">Continue Reading</button></div>
+                </div>
+                <div class="border border-slate-200 dark:border-slate-700 rounded-xl p-3.5">
+                  <div class="flex items-center gap-2 mb-2"><span class="text-[10px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">PDF</span><span class="text-[11px] text-slate-400">2.1 MB</span></div>
+                  <div class="text-[12px] font-medium mb-2">A Survey on Graph Neural Networks.pdf</div>
+                  <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 mb-1.5"><div class="bg-indigo-500 h-1 rounded-full" style="width:40%"></div></div>
+                  <div class="flex justify-between text-[11px]"><span class="text-slate-400">40% Read</span><button class="text-indigo-600 font-medium">Continue Reading</button></div>
+                </div>
+                <div class="border border-slate-200 dark:border-slate-700 rounded-xl p-3.5">
+                  <div class="flex items-center gap-2 mb-2"><span class="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">PDF</span><span class="text-[11px] text-slate-400">3.4 MB</span></div>
+                  <div class="text-[12px] font-medium mb-2">Medical Image Segmentation Review.pdf</div>
+                  <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 mb-1.5"><div class="bg-indigo-500 h-1 rounded-full" style="width:30%"></div></div>
+                  <div class="flex justify-between text-[11px]"><span class="text-slate-400">30% Read</span><button class="text-indigo-600 font-medium">Continue Reading</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div class="space-y-5">
+            <!-- Quick Actions -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+              <h3 class="text-[13px] font-semibold mb-3">Quick Actions</h3>
+              <div class="grid grid-cols-3 gap-2">
+                <button onclick="showPage('library')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition">
+                  <div class="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-sm">☁️</div>
+                  <span class="text-[10px] font-medium text-center">Upload Paper</span>
+                </button>
+                <button class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-sm">🔍</div>
+                  <span class="text-[10px] font-medium text-center">Search Papers</span>
+                </button>
+                <button onclick="showPage('chat')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center text-sm">💬</div>
+                  <span class="text-[10px] font-medium text-center">AI Chat (RAG)</span>
+                </button>
+                <button onclick="showPage('literature')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-orange-50 text-orange-600 rounded-lg flex items-center justify-center text-sm">📄</div>
+                  <span class="text-[10px] font-medium text-center">Literature Review</span>
+                </button>
+                <button onclick="showPage('gap')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center text-sm">🎯</div>
+                  <span class="text-[10px] font-medium text-center">Research Gap</span>
+                </button>
+                <button onclick="showPage('compare')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-violet-50 text-violet-600 rounded-lg flex items-center justify-center text-sm">⚖️</div>
+                  <span class="text-[10px] font-medium text-center">Compare Papers</span>
+                </button>
+                <button onclick="showPage('citation')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-cyan-50 text-cyan-600 rounded-lg flex items-center justify-center text-sm">📎</div>
+                  <span class="text-[10px] font-medium text-center">Citation Manager</span>
+                </button>
+                <button onclick="showPage('proposal')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-pink-50 text-pink-600 rounded-lg flex items-center justify-center text-sm">📋</div>
+                  <span class="text-[10px] font-medium text-center">Proposal Generator</span>
+                </button>
+                <button onclick="showPage('writer')" class="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 hover:bg-indigo-50/50 transition">
+                  <div class="w-8 h-8 bg-teal-50 text-teal-600 rounded-lg flex items-center justify-center text-sm">✍️</div>
+                  <span class="text-[10px] font-medium text-center">Paper Writer</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Recent AI Chats -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between">
+                <h3 class="text-[13px] font-semibold">Recent AI Chats</h3>
+                <button class="text-[12px] text-indigo-600 font-medium">View all →</button>
+              </div>
+              <div class="p-3 space-y-2">
+                <div class="flex gap-2.5 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer">
+                  <div class="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-xs">💬</div>
+                  <div><div class="text-[12px] font-medium leading-snug">Explain the architecture of Vision Transformer (ViT)</div><div class="text-[10px] text-slate-400">2 hours ago</div></div>
+                </div>
+                <div class="flex gap-2.5 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer">
+                  <div class="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-xs">💬</div>
+                  <div><div class="text-[12px] font-medium leading-snug">Compare ResNet and EfficientNet</div><div class="text-[10px] text-slate-400">5 hours ago</div></div>
+                </div>
+                <div class="flex gap-2.5 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer">
+                  <div class="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-xs">💬</div>
+                  <div><div class="text-[12px] font-medium leading-snug">What are the limitations of current datasets in medical imaging?</div><div class="text-[10px] text-slate-400">1 day ago</div></div>
+                </div>
+                <div class="flex gap-2.5 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer">
+                  <div class="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-xs">💬</div>
+                  <div><div class="text-[12px] font-medium leading-snug">Summarize this paper (2303.08774.pdf)</div><div class="text-[10px] text-slate-400">2 days ago</div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Activity Timeline -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between">
+                <h3 class="text-[13px] font-semibold">Activity Timeline</h3>
+                <button class="text-[12px] text-indigo-600 font-medium">View all →</button>
+              </div>
+              <div class="p-3 space-y-3">
+                <div class="flex gap-2.5"><div class="w-7 h-7 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-xs">↑</div><div><div class="text-[12px]">You uploaded 3 papers</div><div class="text-[10px] text-slate-400">2 hours ago</div></div></div>
+                <div class="flex gap-2.5"><div class="w-7 h-7 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center text-xs">📄</div><div><div class="text-[12px]">Literature review generated</div><div class="text-[10px] text-slate-400">4 hours ago</div></div></div>
+                <div class="flex gap-2.5"><div class="w-7 h-7 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center text-xs">🎯</div><div><div class="text-[12px]">Research gap analysis completed</div><div class="text-[10px] text-slate-400">1 day ago</div></div></div>
+                <div class="flex gap-2.5"><div class="w-7 h-7 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-xs">📎</div><div><div class="text-[12px]">Citation export completed</div><div class="text-[10px] text-slate-400">2 days ago</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== OTHER PAGES (Detailed Mock) ===================== -->
+      <div id="projects" class="content-panel">
+        <div class="flex justify-between items-center mb-5">
+          <div><h2 class="text-xl font-semibold">My Projects</h2><p class="text-[13px] text-slate-500">12 active research projects</p></div>
+          <button class="bg-indigo-600 text-white text-[13px] font-medium px-4 py-2 rounded-lg">+ New Project</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5 hover:shadow-md transition cursor-pointer">
+            <div class="flex justify-between mb-3"><span class="text-[11px] font-medium bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">Medical</span><span class="text-[11px] text-slate-400">24 papers</span></div>
+            <h3 class="text-[14px] font-semibold mb-1">Heart Hypokinesia Detection</h3>
+            <p class="text-[12px] text-slate-500 mb-4">Using echocardiography and deep learning for early detection of cardiac abnormalities.</p>
+            <div class="flex justify-between text-[11px] text-slate-400"><span>Updated 2h ago</span><span class="text-indigo-600 font-medium">Open →</span></div>
+          </div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5 hover:shadow-md transition cursor-pointer">
+            <div class="flex justify-between mb-3"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">Materials</span><span class="text-[11px] text-slate-400">18 papers</span></div>
+            <h3 class="text-[14px] font-semibold mb-1">HEA Phase Stability (MPEAs)</h3>
+            <p class="text-[12px] text-slate-500 mb-4">Machine learning models for predicting phase stability in multi-principal element alloys.</p>
+            <div class="flex justify-between text-[11px] text-slate-400"><span>Updated yesterday</span><span class="text-indigo-600 font-medium">Open →</span></div>
+          </div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5 hover:shadow-md transition cursor-pointer">
+            <div class="flex justify-between mb-3"><span class="text-[11px] font-medium bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">NLP</span><span class="text-[11px] text-slate-400">15 papers</span></div>
+            <h3 class="text-[14px] font-semibold mb-1">NLP for Paper Summarization</h3>
+            <p class="text-[12px] text-slate-500 mb-4">Abstractive summarization techniques for scientific literature using transformers.</p>
+            <div class="flex justify-between text-[11px] text-slate-400"><span>Updated 3 days ago</span><span class="text-indigo-600 font-medium">Open →</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="library" class="content-panel">
+        <div class="flex justify-between items-center mb-5">
+          <div><h2 class="text-xl font-semibold">Library & Papers</h2><p class="text-[13px] text-slate-500">145 papers · 12.4 GB used</p></div>
+          <button class="bg-indigo-600 text-white text-[13px] font-medium px-4 py-2 rounded-lg">+ Upload Papers</button>
+        </div>
+        <div class="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-10 text-center mb-5 hover:border-indigo-400 transition cursor-pointer">
+          <div class="text-3xl mb-2">📄</div>
+          <p class="text-[13px] font-medium">Drop PDF, DOCX or TXT files here</p>
+          <p class="text-[12px] text-slate-400 mt-1">or click to browse · Max 100 MB per file</p>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border overflow-hidden">
+          <table class="w-full text-[13px]">
+            <thead class="bg-slate-50 dark:bg-slate-700/50 text-slate-500 text-left">
+              <tr><th class="px-5 py-3 font-medium">Title</th><th class="px-5 py-3 font-medium">Size</th><th class="px-5 py-3 font-medium">Status</th><th class="px-5 py-3 font-medium">Uploaded</th><th class="px-5 py-3"></th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30"><td class="px-5 py-3.5 font-medium">Attention Is All You Need.pdf</td><td class="px-5 py-3.5 text-slate-500">1.3 MB</td><td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Processed</span></td><td class="px-5 py-3.5 text-slate-500">2h ago</td><td class="px-5 py-3.5"><button class="text-indigo-600 text-[12px] font-medium">Chat</button></td></tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30"><td class="px-5 py-3.5 font-medium">A Survey on Graph Neural Networks.pdf</td><td class="px-5 py-3.5 text-slate-500">2.1 MB</td><td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Processed</span></td><td class="px-5 py-3.5 text-slate-500">Yesterday</td><td class="px-5 py-3.5"><button class="text-indigo-600 text-[12px] font-medium">Chat</button></td></tr>
+              <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30"><td class="px-5 py-3.5 font-medium">Medical Image Segmentation Review.pdf</td><td class="px-5 py-3.5 text-slate-500">3.4 MB</td><td class="px-5 py-3.5"><span class="text-[11px] font-medium bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Processing</span></td><td class="px-5 py-3.5 text-slate-500">Just now</td><td class="px-5 py-3.5"><button class="text-slate-400 text-[12px]">Wait</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="chat" class="content-panel">
+        <div class="flex h-[calc(100vh-140px)] gap-4">
+          <div class="w-64 bg-white dark:bg-slate-800 rounded-xl border p-4 overflow-y-auto">
+            <h3 class="text-[12px] font-semibold text-slate-500 uppercase mb-3">Selected Papers</h3>
+            <div class="space-y-1 text-[13px]">
+              <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"><input type="checkbox" checked class="rounded text-indigo-600"> Attention Is All You Need</label>
+              <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"><input type="checkbox" checked class="rounded text-indigo-600"> BERT</label>
+              <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"><input type="checkbox" class="rounded text-indigo-600"> Vision Transformer</label>
+            </div>
+          </div>
+          <div class="flex-1 bg-white dark:bg-slate-800 rounded-xl border flex flex-col">
+            <div class="px-5 py-3 border-b flex justify-between items-center">
+              <h3 class="text-[13px] font-semibold">Chat with Papers</h3>
+              <div class="flex gap-1.5"><button class="text-[11px] bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-md">Summarize</button><button class="text-[11px] bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-md">Compare</button><button class="text-[11px] bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-md">Find Gaps</button></div>
+            </div>
+            <div class="flex-1 p-5 overflow-y-auto space-y-4">
+              <div class="flex gap-3"><div class="w-7 h-7 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-[11px] font-bold">AI</div><div class="bg-slate-50 dark:bg-slate-700 rounded-2xl rounded-tl-md px-4 py-2.5 max-w-2xl text-[13px]">Based on the selected papers, the Transformer architecture introduced self-attention, enabling parallelization and better long-range dependency modeling.<div class="mt-2 text-[11px] text-indigo-600">Sources: [1] Attention Is All You Need</div></div></div>
+              <div class="flex gap-3 justify-end"><div class="bg-indigo-600 text-white rounded-2xl rounded-tr-md px-4 py-2.5 max-w-xl text-[13px]">What are the main limitations of the original Transformer?</div></div>
+            </div>
+            <div class="p-4 border-t"><div class="flex gap-2"><input type="text" placeholder="Ask anything about the selected papers..." class="flex-1 border rounded-lg px-4 py-2.5 text-[13px] dark:bg-slate-700 dark:border-slate-600"><button class="bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-[13px] font-medium">Send</button></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="literature" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Literature Review Generator</h2><p class="text-[13px] text-slate-500">Generate structured literature reviews from your papers</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5"><h3 class="text-[13px] font-semibold mb-3">Select Papers</h3><div class="space-y-2 text-[13px]"><label class="flex gap-2"><input type="checkbox" checked> Attention Is All You Need</label><label class="flex gap-2"><input type="checkbox" checked> BERT</label><label class="flex gap-2"><input type="checkbox" checked> GPT-3</label></div></div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5"><h3 class="text-[13px] font-semibold mb-3">Structure</h3><div class="space-y-2 text-[13px]"><label class="flex gap-2"><input type="checkbox" checked> Background</label><label class="flex gap-2"><input type="checkbox" checked> State of the Art</label><label class="flex gap-2"><input type="checkbox" checked> Research Gaps</label></div></div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5 flex flex-col"><h3 class="text-[13px] font-semibold mb-3">Output</h3><select class="border rounded-lg px-3 py-2 text-[13px] mb-4 dark:bg-slate-700"><option>Academic Style</option></select><button class="mt-auto bg-indigo-600 text-white py-2.5 rounded-lg text-[13px] font-medium">Generate Literature Review</button></div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border p-6">
+          <h3 class="text-[13px] font-semibold mb-4">Generated Preview</h3>
+          <div class="text-[13px] space-y-3 leading-relaxed">
+            <div><h4 class="font-semibold">1. Background</h4><p>The field of NLP has undergone a paradigm shift with attention-based models...</p></div>
+            <div><h4 class="font-semibold">2. State of the Art</h4><p>Vaswani et al. (2017) introduced the Transformer architecture...</p></div>
+            <div><h4 class="font-semibold">3. Research Gaps</h4><p>Challenges remain in computational efficiency and multimodal capabilities...</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="gap" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Research Gap Detection</h2><p class="text-[13px] text-slate-500">Automatically identify missing methods and open challenges</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5">
+            <h3 class="text-[13px] font-semibold mb-4">Detected Gaps</h3>
+            <div class="space-y-4">
+              <div class="border-l-2 border-rose-400 pl-4"><div class="text-[13px] font-medium">Limited evaluation on low-resource languages</div><p class="text-[12px] text-slate-500 mt-1">Most models evaluated primarily on English.</p><div class="text-[11px] text-indigo-600 mt-1">Found in 7 papers</div></div>
+              <div class="border-l-2 border-amber-400 pl-4"><div class="text-[13px] font-medium">Lack of standardized multimodal datasets</div><p class="text-[12px] text-slate-500 mt-1">Different datasets make fair comparison difficult.</p><div class="text-[11px] text-indigo-600 mt-1">Found in 5 papers</div></div>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5">
+            <h3 class="text-[13px] font-semibold mb-4">Opportunity Analysis</h3>
+            <div class="space-y-2 text-[13px]">
+              <div class="flex justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg"><span>New benchmarks potential</span><span class="text-emerald-700 font-medium">High</span></div>
+              <div class="flex justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg"><span>Efficient architectures</span><span class="text-amber-700 font-medium">Medium</span></div>
+            </div>
+            <button class="w-full mt-5 border border-indigo-600 text-indigo-600 py-2 rounded-lg text-[13px] font-medium">Generate Full Report</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="compare" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Paper Comparison</h2><p class="text-[13px] text-slate-500">Side-by-side comparison of methods and results</p></div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border overflow-hidden">
+          <table class="w-full text-[13px]">
+            <thead class="bg-slate-50 dark:bg-slate-700/50 text-slate-500"><tr><th class="px-5 py-3 text-left">Aspect</th><th class="px-5 py-3 text-left">Transformer</th><th class="px-5 py-3 text-left">BERT</th><th class="px-5 py-3 text-left">GPT-3</th></tr></thead>
+            <tbody class="divide-y dark:divide-slate-700">
+              <tr><td class="px-5 py-3 font-medium text-slate-500">Architecture</td><td class="px-5 py-3">Encoder-Decoder</td><td class="px-5 py-3">Encoder only</td><td class="px-5 py-3">Decoder only</td></tr>
+              <tr class="bg-slate-50/50 dark:bg-slate-700/20"><td class="px-5 py-3 font-medium text-slate-500">Parameters</td><td class="px-5 py-3">65M</td><td class="px-5 py-3">340M</td><td class="px-5 py-3">175B</td></tr>
+              <tr><td class="px-5 py-3 font-medium text-slate-500">Key Contribution</td><td class="px-5 py-3">Self-attention</td><td class="px-5 py-3">Bidirectional</td><td class="px-5 py-3">Few-shot learning</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="citation" class="content-panel">
+        <div class="flex justify-between items-center mb-5">
+          <div><h2 class="text-xl font-semibold">Citation Manager</h2><p class="text-[13px] text-slate-500">Generate citations in multiple formats</p></div>
+          <select class="border rounded-lg px-3 py-2 text-[13px] dark:bg-slate-700"><option>APA 7th</option><option>IEEE</option><option>BibTeX</option></select>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border divide-y dark:divide-slate-700">
+          <div class="p-5 flex justify-between"><div><div class="text-[13px] font-medium">Vaswani, A., et al. (2017). Attention is all you need.</div><div class="mt-2 text-[11px] bg-slate-50 dark:bg-slate-700 p-2 rounded font-mono">Vaswani et al. (2017). Attention is all you need. NeurIPS.</div></div><button class="text-indigo-600 text-[12px]">Copy</button></div>
+          <div class="p-5 flex justify-between"><div><div class="text-[13px] font-medium">Devlin, J., et al. (2019). BERT...</div><div class="mt-2 text-[11px] bg-slate-50 dark:bg-slate-700 p-2 rounded font-mono">Devlin et al. (2019). BERT. NAACL.</div></div><button class="text-indigo-600 text-[12px]">Copy</button></div>
+        </div>
+      </div>
+
+      <div id="proposal" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Research Proposal Generator</h2><p class="text-[13px] text-slate-500">Generate complete research proposals</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5">
+            <h3 class="text-[13px] font-semibold mb-3">Settings</h3>
+            <input type="text" value="Efficient Transformers for Long Documents" class="w-full border rounded-lg px-3 py-2 text-[13px] mb-3 dark:bg-slate-700">
+            <button class="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-[13px] font-medium">Generate Proposal</button>
+          </div>
+          <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border p-6">
+            <h3 class="text-[13px] font-semibold mb-3">Preview</h3>
+            <div class="text-[13px] space-y-3"><div><h4 class="font-semibold">Abstract</h4><p>This research proposes a novel efficient attention mechanism...</p></div><div><h4 class="font-semibold">Objectives</h4><ul class="list-disc ml-5"><li>Design linear-complexity attention</li><li>Evaluate on long-document tasks</li></ul></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="writer" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Paper Writer</h2><p class="text-[13px] text-slate-500">Generate full research paper sections</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-5">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-4">
+            <div class="space-y-1 text-[13px]">
+              <button class="w-full text-left px-3 py-2 rounded-md bg-indigo-50 text-indigo-700 font-medium">Title & Abstract</button>
+              <button class="w-full text-left px-3 py-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700">Introduction</button>
+              <button class="w-full text-left px-3 py-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700">Methodology</button>
+              <button class="w-full text-left px-3 py-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700">Results</button>
+            </div>
+          </div>
+          <div class="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border p-6">
+            <div class="flex justify-between mb-4"><h3 class="text-[13px] font-semibold">Title & Abstract</h3><button class="text-[12px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg">Regenerate</button></div>
+            <input type="text" value="Efficient Attention Mechanisms for Long-Document Understanding" class="w-full border rounded-lg px-3 py-2 text-[13px] font-medium mb-3 dark:bg-slate-700">
+            <textarea rows="6" class="w-full border rounded-lg px-3 py-2 text-[13px] dark:bg-slate-700">Transformer models have achieved remarkable success... We propose a novel efficient attention mechanism...</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div id="reviewer" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">AI Reviewer</h2><p class="text-[13px] text-slate-500">Intelligent manuscript review</p></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5">
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center mb-4"><div class="text-3xl mb-2">📄</div><p class="text-[13px] font-medium">Drop manuscript here</p></div>
+            <button class="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-[13px] font-medium">Start Review</button>
+          </div>
+          <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border p-5">
+            <div class="grid grid-cols-3 gap-3 mb-5">
+              <div class="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl"><div class="text-xl font-semibold text-emerald-700">8.4</div><div class="text-[11px]">Overall</div></div>
+              <div class="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl"><div class="text-xl font-semibold text-blue-700">Good</div><div class="text-[11px]">Clarity</div></div>
+              <div class="text-center p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl"><div class="text-xl font-semibold text-amber-700">Medium</div><div class="text-[11px]">Novelty</div></div>
+            </div>
+            <div class="space-y-2 text-[13px]">
+              <div class="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">✓ Strong methodology section</div>
+              <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">! Limited related work discussion</div>
+              <div class="p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg">✗ Missing statistical significance tests</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="analytics" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Analytics</h2><p class="text-[13px] text-slate-500">Research activity insights</p></div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5"><div class="text-[12px] text-slate-500">Papers this month</div><div class="text-3xl font-semibold mt-1">47</div></div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5"><div class="text-[12px] text-slate-500">AI interactions</div><div class="text-3xl font-semibold mt-1">1,284</div></div>
+          <div class="bg-white dark:bg-slate-800 rounded-xl border p-5"><div class="text-[12px] text-slate-500">Reviews generated</div><div class="text-3xl font-semibold mt-1">19</div></div>
+        </div>
+      </div>
+
+      <div id="settings" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Settings</h2><p class="text-[13px] text-slate-500">Manage your preferences</p></div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border divide-y dark:divide-slate-700 max-w-2xl">
+          <div class="p-5 flex justify-between items-center"><div><div class="text-[13px] font-medium">Default AI Model</div><div class="text-[12px] text-slate-500">Preferred LLM</div></div><select class="border rounded-lg px-3 py-1.5 text-[13px] dark:bg-slate-700"><option>GPT-4o</option><option>Claude 3.5</option></select></div>
+          <div class="p-5 flex justify-between items-center"><div><div class="text-[13px] font-medium">Citation Style</div></div><select class="border rounded-lg px-3 py-1.5 text-[13px] dark:bg-slate-700"><option>APA 7th</option><option>IEEE</option></select></div>
+        </div>
+      </div>
+
+      <div id="help" class="content-panel">
+        <div class="mb-5"><h2 class="text-xl font-semibold">Help & Support</h2><p class="text-[13px] text-slate-500">Get help with ResearchGPT</p></div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border p-6 max-w-2xl">
+          <div class="space-y-4 text-[13px]">
+            <div class="p-4 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">📚 Documentation & Guides</div>
+            <div class="p-4 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">💬 Contact Support</div>
+            <div class="p-4 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">🎥 Video Tutorials</div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  function showPage(id) {
+    document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.sidebar-item').forEach(i => {
+      i.classList.remove('active');
+      i.classList.add('text-slate-600', 'dark:text-slate-300');
+    });
+    const btn = document.querySelector(`[data-page="${id}"]`);
+    if (btn) { btn.classList.add('active'); btn.classList.remove('text-slate-600', 'dark:text-slate-300'); }
+  }
+  function toggleTheme() { document.documentElement.classList.toggle('dark'); }
+  function toggleNotifications() {
+    document.getElementById('notifications-panel').classList.toggle('hidden');
+  }
+  document.addEventListener('click', e => {
+    const panel = document.getElementById('notifications-panel');
+    if (!panel.contains(e.target) && !e.target.closest('button')?.onclick?.toString().includes('toggleNotifications')) {
+      panel.classList.add('hidden');
+    }
+  });
+</script>
+</body>
+</html>
