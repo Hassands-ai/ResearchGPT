@@ -19,8 +19,8 @@ requests
 
 pypdf
 
-sentence-transformers
-transformers
+sentence-transformers==3.0.1
+transformers==4.41.2
 
 
 qdrant-client
