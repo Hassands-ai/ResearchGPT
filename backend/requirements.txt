@@ -32,3 +32,5 @@ scikit-learn
 
 python-dotenv
 torch==2.3.1
+
+openai
