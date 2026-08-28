@@ -1,77 +1,35 @@
-# ============================================================
-# ResearchGPT - Backend Dependencies
-# CPU-friendly deployment
-# ============================================================
+# ResearchGPT Backend Dependencies
 
-# -------------------------
-# Web API
-# -------------------------
 fastapi
 uvicorn[standard]
 python-multipart
 
-# -------------------------
-# Configuration / Validation
-# -------------------------
 pydantic
 pydantic-settings
 
-# -------------------------
-# Database
-# -------------------------
 SQLAlchemy
 psycopg2-binary
 
-# -------------------------
-# Authentication / Security
-# -------------------------
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
 
-# -------------------------
-# HTTP / API clients
-# -------------------------
 httpx
 requests
 
-# -------------------------
-# PDF Processing
-# -------------------------
 pypdf
 
-# -------------------------
-# AI / Embeddings
-# -------------------------
 sentence-transformers
 transformers
 
-# CPU-only PyTorch
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.3.1+cpu
 
-# -------------------------
-# Vector Database
-# -------------------------
 qdrant-client
-
-# -------------------------
-# Object Storage
-# -------------------------
 minio
-
-# -------------------------
-# Redis
-# -------------------------
 redis
 
-# -------------------------
-# Numerical / Data Processing
-# -------------------------
 numpy
 scikit-learn
 
-# -------------------------
-# Environment / Utilities
-# -------------------------
 python-dotenv

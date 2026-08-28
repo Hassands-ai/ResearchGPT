@@ -1,5 +1,8 @@
+cd /mnt/dataD/PaperAxiom
+
+cat > backend/Dockerfile <<'EOF'
 # ============================================================
-# ResearchGPT Backend
+# ResearchGPT Backend - Production/Render
 # ============================================================
 
 FROM python:3.10-slim
@@ -26,16 +29,22 @@ RUN apt-get update && \
 # Python dependencies
 # ------------------------------------------------------------
 
-COPY requirements.txt /app/requirements.txt
+COPY backend/requirements.txt /app/requirements.txt
 
 RUN pip install --upgrade pip && \
     pip install -r /app/requirements.txt
 
 # ------------------------------------------------------------
-# Application
+# Backend application
 # ------------------------------------------------------------
 
-COPY app /app/app
+COPY backend/app /app/app
+
+# ------------------------------------------------------------
+# Frontend
+# ------------------------------------------------------------
+
+COPY frontend /app/frontend
 
 # ------------------------------------------------------------
 # Runtime
@@ -61,3 +70,4 @@ HEALTHCHECK \
 # ------------------------------------------------------------
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+EOF

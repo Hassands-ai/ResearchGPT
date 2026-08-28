@@ -1,8 +1,20 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api.routes import router
+
+
+# ============================================================
+# PATHS
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIR = BASE_DIR / "frontend"
 
 
 # ============================================================
@@ -41,11 +53,40 @@ app.include_router(
 
 
 # ============================================================
-# ROOT
+# FRONTEND STATIC FILES
 # ============================================================
 
-@app.get("/")
-def root():
+if FRONTEND_DIR.exists():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIR / "assets"),
+        name="assets",
+    )
+
+    app.mount(
+        "/css",
+        StaticFiles(directory=FRONTEND_DIR / "css"),
+        name="css",
+    )
+
+    app.mount(
+        "/js",
+        StaticFiles(directory=FRONTEND_DIR / "js"),
+        name="js",
+    )
+
+
+# ============================================================
+# FRONTEND ROOT
+# ============================================================
+
+@app.get("/", include_in_schema=False)
+def frontend_root():
+    index_file = FRONTEND_DIR / "index.html"
+
+    if index_file.exists():
+        return FileResponse(index_file)
+
     return {
         "message": "Welcome to ResearchGPT API",
         "status": "running",
@@ -54,10 +95,26 @@ def root():
 
 
 # ============================================================
+# LOGIN PAGE
+# ============================================================
+
+@app.get("/login.html", include_in_schema=False)
+def frontend_login():
+    login_file = FRONTEND_DIR / "login.html"
+
+    if login_file.exists():
+        return FileResponse(login_file)
+
+    return {
+        "error": "login.html not found"
+    }
+
+
+# ============================================================
 # HEALTH CHECK
 # ============================================================
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 def health_check():
     return {
         "status": "healthy",
