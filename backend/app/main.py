@@ -10,14 +10,15 @@ from app.api.routes import router
 
 
 # ============================================================
-# PATHS
+# PROJECT PATHS
 # ============================================================
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 PROJECT_DIR = BACKEND_DIR.parent
+
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 FRONTEND_INDEX = FRONTEND_DIR / "index.html"
-FRONTEND_ASSETS = FRONTEND_DIR / "assets"
+FRONTEND_LOGIN = FRONTEND_DIR / "login.html"
 
 
 # ============================================================
@@ -56,33 +57,44 @@ app.include_router(
 
 
 # ============================================================
-# FRONTEND STATIC FILES
+# FRONTEND STATIC DIRECTORIES
 # ============================================================
 
-# Only mount assets if the directory actually exists.
-if FRONTEND_ASSETS.exists() and FRONTEND_ASSETS.is_dir():
-    app.mount(
-        "/assets",
-        StaticFiles(directory=str(FRONTEND_ASSETS)),
-        name="assets",
-    )
+for folder_name in ["assets", "css", "js"]:
+    folder = FRONTEND_DIR / folder_name
+
+    if folder.exists() and folder.is_dir():
+        app.mount(
+            f"/{folder_name}",
+            StaticFiles(directory=str(folder)),
+            name=folder_name,
+        )
 
 
 # ============================================================
-# ROOT
+# FRONTEND ROUTES
 # ============================================================
 
 @app.get("/")
 def root():
-    # If frontend/index.html exists, serve the frontend.
     if FRONTEND_INDEX.exists():
         return FileResponse(str(FRONTEND_INDEX))
 
-    # Otherwise return API information.
     return {
         "message": "Welcome to ResearchGPT API",
         "status": "running",
         "version": "0.1.0",
+    }
+
+
+@app.get("/login.html")
+def login_page():
+    if FRONTEND_LOGIN.exists():
+        return FileResponse(str(FRONTEND_LOGIN))
+
+    return {
+        "message": "Login page not found",
+        "status": "error",
     }
 
 

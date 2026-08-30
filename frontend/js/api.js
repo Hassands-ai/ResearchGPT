@@ -5,7 +5,7 @@
    Frontend <-> FastAPI bridge
    ============================================================ */
 
-const API_BASE = "https://status-great-implementing-contribution.trycloudflare.com/api/v1";
+const API_BASE = "/api/v1";
 
 
 /* ============================================================
