@@ -13,8 +13,11 @@ from app.api.routes import router
 # PATHS
 # ============================================================
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-FRONTEND_DIR = BASE_DIR / "frontend"
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = BACKEND_DIR.parent
+FRONTEND_DIR = PROJECT_DIR / "frontend"
+FRONTEND_INDEX = FRONTEND_DIR / "index.html"
+FRONTEND_ASSETS = FRONTEND_DIR / "assets"
 
 
 # ============================================================
@@ -56,37 +59,26 @@ app.include_router(
 # FRONTEND STATIC FILES
 # ============================================================
 
-if FRONTEND_DIR.exists():
+# Only mount assets if the directory actually exists.
+if FRONTEND_ASSETS.exists() and FRONTEND_ASSETS.is_dir():
     app.mount(
         "/assets",
-        StaticFiles(directory=FRONTEND_DIR / "assets"),
+        StaticFiles(directory=str(FRONTEND_ASSETS)),
         name="assets",
     )
 
-    app.mount(
-        "/css",
-        StaticFiles(directory=FRONTEND_DIR / "css"),
-        name="css",
-    )
-
-    app.mount(
-        "/js",
-        StaticFiles(directory=FRONTEND_DIR / "js"),
-        name="js",
-    )
-
 
 # ============================================================
-# FRONTEND ROOT
+# ROOT
 # ============================================================
 
-@app.get("/", include_in_schema=False)
-def frontend_root():
-    index_file = FRONTEND_DIR / "index.html"
+@app.get("/")
+def root():
+    # If frontend/index.html exists, serve the frontend.
+    if FRONTEND_INDEX.exists():
+        return FileResponse(str(FRONTEND_INDEX))
 
-    if index_file.exists():
-        return FileResponse(index_file)
-
+    # Otherwise return API information.
     return {
         "message": "Welcome to ResearchGPT API",
         "status": "running",
@@ -95,26 +87,10 @@ def frontend_root():
 
 
 # ============================================================
-# LOGIN PAGE
-# ============================================================
-
-@app.get("/login.html", include_in_schema=False)
-def frontend_login():
-    login_file = FRONTEND_DIR / "login.html"
-
-    if login_file.exists():
-        return FileResponse(login_file)
-
-    return {
-        "error": "login.html not found"
-    }
-
-
-# ============================================================
 # HEALTH CHECK
 # ============================================================
 
-@app.get("/health", include_in_schema=False)
+@app.get("/health")
 def health_check():
     return {
         "status": "healthy",
