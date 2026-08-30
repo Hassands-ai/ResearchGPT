@@ -8,6 +8,15 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.routes import router
 
+# Database
+from app.db.base import Base
+from app.db.session import engine
+
+# Import models so SQLAlchemy knows about all tables
+from app.models.user import User
+from app.models.project import Project
+from app.models.paper import Paper
+
 
 # ============================================================
 # PROJECT PATHS
@@ -22,6 +31,24 @@ FRONTEND_LOGIN = FRONTEND_DIR / "login.html"
 
 
 # ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
+
+def initialize_database():
+    """
+    Create database tables if they do not already exist.
+
+    This is important for Render because the SQLite database
+    may be completely new on the first deployment.
+    """
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("DATABASE_INITIALIZED")
+    except Exception as exc:
+        print(f"DATABASE_INITIALIZATION_WARNING: {exc}")
+
+
+# ============================================================
 # RESEARCHGPT API
 # ============================================================
 
@@ -31,6 +58,15 @@ app = FastAPI(
     version="0.1.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
+
+
+# ============================================================
+# STARTUP
+# ============================================================
+
+@app.on_event("startup")
+def startup_event():
+    initialize_database()
 
 
 # ============================================================
@@ -77,6 +113,9 @@ for folder_name in ["assets", "css", "js"]:
 
 @app.get("/")
 def root():
+    """
+    Main ResearchGPT entry point.
+    """
     if FRONTEND_INDEX.exists():
         return FileResponse(str(FRONTEND_INDEX))
 
@@ -89,6 +128,9 @@ def root():
 
 @app.get("/login.html")
 def login_page():
+    """
+    Serve the login page.
+    """
     if FRONTEND_LOGIN.exists():
         return FileResponse(str(FRONTEND_LOGIN))
 
@@ -107,4 +149,17 @@ def health_check():
     return {
         "status": "healthy",
         "service": "ResearchGPT",
+    }
+
+
+# ============================================================
+# API INFORMATION
+# ============================================================
+
+@app.get("/api-status")
+def api_status():
+    return {
+        "status": "online",
+        "service": "ResearchGPT",
+        "api_prefix": settings.API_V1_STR,
     }

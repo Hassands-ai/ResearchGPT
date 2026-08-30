@@ -1,55 +1,104 @@
-from pydantic_settings import BaseSettings
 from typing import List
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
 class Settings(BaseSettings):
-    # Project
+
+    # ============================================================
+    # PROJECT
+    # ============================================================
+
     PROJECT_NAME: str = "PaperAxiom"
     API_V1_STR: str = "/api/v1"
 
-    # Database
-    POSTGRES_USER: str = "paperaxiom"
-    POSTGRES_PASSWORD: str = "paperaxiom_secret"
-    POSTGRES_DB: str = "paperaxiom"
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
 
-    @property
-    def DATABASE_URL(self) -> str:
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    # ============================================================
+    # DATABASE
+    # ============================================================
+    #
+    # SQLite is used for the Render Free deployment.
+    # This avoids requiring a paid PostgreSQL service.
+    #
 
-    # MinIO
+    DATABASE_URL: str = "sqlite:///./paperaxiom.db"
+
+
+    # ============================================================
+    # MINIO
+    # ============================================================
+
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "paperaxiom"
     MINIO_SECRET_KEY: str = "paperaxiom_secret"
     MINIO_BUCKET: str = "papers"
 
-    # Qdrant
+
+    # ============================================================
+    # QDRANT
+    # ============================================================
+
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
 
-    # Redis
+
+    # ============================================================
+    # REDIS
+    # ============================================================
+
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
 
-    # OpenRouter
+
+    # ============================================================
+    # OPENROUTER
+    # ============================================================
+
     OPENROUTER_API_KEYS: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODELS: str = "meta-llama/llama-3.1-8b-instruct"
+
+
+    # ============================================================
+    # HELPERS
+    # ============================================================
 
     @property
     def api_keys_list(self) -> List[str]:
         if not self.OPENROUTER_API_KEYS:
             return []
-        return [k.strip() for k in self.OPENROUTER_API_KEYS.split(",") if k.strip()]
+
+        return [
+            key.strip()
+            for key in self.OPENROUTER_API_KEYS.split(",")
+            if key.strip()
+        ]
+
 
     @property
     def models_list(self) -> List[str]:
         if not self.OPENROUTER_MODELS:
-            return ["meta-llama/llama-3.1-8b-instruct"]
-        return [m.strip() for m in self.OPENROUTER_MODELS.split(",") if m.strip()]
+            return [
+                "meta-llama/llama-3.1-8b-instruct"
+            ]
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+        return [
+            model.strip()
+            for model in self.OPENROUTER_MODELS.split(",")
+            if model.strip()
+        ]
+
+
+    # ============================================================
+    # ENVIRONMENT CONFIGURATION
+    # ============================================================
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
 
 settings = Settings()
