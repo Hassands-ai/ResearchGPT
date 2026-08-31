@@ -1,3 +1,4 @@
+from pathlib import Path
 from app.services.citation_manager_service import (
     citation_manager_service,
 )
@@ -329,25 +330,36 @@ async def upload_paper(
             detail="Uploaded PDF is empty",
         )
 
-    object_name = (
-        f"user_{current_user.id}/"
-        f"{uuid.uuid4()}_{file.filename}"
+    # ------------------------------------------------------------
+    # STORE PDF LOCALLY
+    # ------------------------------------------------------------
+    # Render may not have MinIO configured. Save the uploaded PDF
+    # directly to a writable temporary directory instead.
+    upload_dir = Path("/tmp/paperaxiom_uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_filename = (
+        f"{uuid.uuid4()}_{Path(file.filename).name}"
     )
 
+    local_path = upload_dir / safe_filename
+
     try:
-        file_path = minio_service.upload_file(
-            file_data,
-            object_name,
-        )
+        local_path.write_bytes(file_data)
+
+        file_path = str(local_path)
+
     except Exception as e:
-        print(
-            f"File upload failed: {e}"
-        )
+        print(f"Local PDF storage failed: {e}")
 
         raise HTTPException(
             status_code=500,
-            detail="Failed to upload PDF file.",
+            detail="Failed to store uploaded PDF.",
         )
+
+    # ------------------------------------------------------------
+    # EXTRACT PDF TEXT
+    # ------------------------------------------------------------
 
     try:
         extracted_text = extract_text_from_pdf(
@@ -358,6 +370,11 @@ async def upload_paper(
             extracted_text = extracted_text.replace(
                 "\x00",
                 "",
+            )
+
+        if not extracted_text or not extracted_text.strip():
+            raise ValueError(
+                "No readable text could be extracted from PDF."
             )
 
         status_value = "processed"
