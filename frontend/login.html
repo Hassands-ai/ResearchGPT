@@ -1,86 +1,632 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PaperAxiom – Login</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Inter', sans-serif; }
-  </style>
-</head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <div class="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
-    <!-- Logo -->
-    <div class="flex items-center gap-3 mb-8 justify-center">
-      <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-        </svg>
-      </div>
-      <div>
-        <h1 class="text-xl font-bold text-slate-800">PaperAxiom</h1>
-        <p class="text-xs text-slate-500">AI Research Assistant</p>
-      </div>
+    <title>PaperAxiom – Login</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family:
+                Inter,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+            background: #f5f7fb;
+            color: #172033;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .auth-card {
+            width: 100%;
+            max-width: 390px;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow:
+                0 12px 35px rgba(15, 23, 42, 0.12);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: #4f46e5;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 21px;
+            font-weight: 700;
+        }
+
+        .brand-name {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .brand-subtitle {
+            font-size: 12px;
+            color: #667085;
+            margin-top: 2px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 25px;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #667085;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .message {
+            display: none;
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .message.error {
+            display: block;
+            background: #fff0f0;
+            color: #dc2626;
+        }
+
+        .message.success {
+            display: block;
+            background: #ecfdf3;
+            color: #15803d;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        input {
+            width: 100%;
+            height: 48px;
+            border: 1px solid #d9deea;
+            border-radius: 9px;
+            padding: 0 14px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color .2s, box-shadow .2s;
+        }
+
+        input:focus {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
+        }
+
+        button {
+            width: 100%;
+            height: 48px;
+            border: 0;
+            border-radius: 9px;
+            background: #4f46e5;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #4338ca;
+        }
+
+        button:disabled {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+        .switch {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #667085;
+        }
+
+        .switch button {
+            width: auto;
+            height: auto;
+            padding: 0;
+            margin: 0;
+            background: transparent;
+            color: #4f46e5;
+            font-size: 14px;
+        }
+
+        .switch button:hover {
+            background: transparent;
+            text-decoration: underline;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="auth-card">
+
+    <div class="brand">
+        <div class="brand-icon">✦</div>
+
+        <div>
+            <div class="brand-name">PaperAxiom</div>
+            <div class="brand-subtitle">AI Research Assistant</div>
+        </div>
     </div>
 
-    <h2 class="text-2xl font-semibold text-slate-800 mb-1 text-center">Welcome back</h2>
-    <p class="text-slate-500 text-sm mb-6 text-center">Sign in to continue your research</p>
+    <!-- LOGIN -->
+    <section id="loginSection">
 
-    <div id="error" class="hidden mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg"></div>
+        <h1>Welcome back</h1>
 
-    <form id="loginForm" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-        <input type="email" id="email" required
-          class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          placeholder="you@example.com" value="hassan2@paperaxiom.com" />
-      </div>
+        <div class="subtitle">
+            Sign in to continue your research
+        </div>
 
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
-        <input type="password" id="password" required
-          class="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          placeholder="••••••••" value="test1234" />
-      </div>
+        <div id="loginMessage" class="message"></div>
 
-      <button type="submit" id="loginBtn"
-        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-xl transition">
-        Sign In
-      </button>
-    </form>
+        <form id="loginForm">
 
-    <p class="text-center text-sm text-slate-500 mt-6">
-      Don't have an account?
-      <a href="#" id="showRegister" class="text-indigo-600 font-medium hover:underline">Register</a>
-    </p>
-  </div>
+            <div class="form-group">
+                <label for="loginEmail">Email</label>
 
-  <script src="js/api.js"></script>
-  <script>
-    document.getElementById("loginForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("loginBtn");
-      const error = document.getElementById("error");
-      btn.textContent = "Signing in...";
-      btn.disabled = true;
-      error.classList.add("hidden");
+                <input
+                    id="loginEmail"
+                    type="email"
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    required
+                >
+            </div>
 
-      try {
-        await login(
-          document.getElementById("email").value,
-          document.getElementById("password").value
+            <div class="form-group">
+                <label for="loginPassword">Password</label>
+
+                <input
+                    id="loginPassword"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="Enter your password"
+                    required
+                >
+            </div>
+
+            <button type="submit" id="loginBtn">
+                Sign In
+            </button>
+
+        </form>
+
+        <div class="switch">
+            Don't have an account?
+            <button type="button" id="showRegister">
+                Register
+            </button>
+        </div>
+
+    </section>
+
+
+    <!-- REGISTER -->
+    <section id="registerSection" class="hidden">
+
+        <h1>Create account</h1>
+
+        <div class="subtitle">
+            Start your research with PaperAxiom
+        </div>
+
+        <div id="registerMessage" class="message"></div>
+
+        <form id="registerForm">
+
+            <div class="form-group">
+                <label for="registerName">
+                    Full Name <span style="font-weight:400;color:#98a2b3;">(optional)</span>
+                </label>
+
+                <input
+                    id="registerName"
+                    type="text"
+                    autocomplete="name"
+                    placeholder="Your name"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="registerEmail">
+                    Email
+                </label>
+
+                <input
+                    id="registerEmail"
+                    type="email"
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="registerPassword">
+                    Password
+                </label>
+
+                <input
+                    id="registerPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="6"
+                    placeholder="Create a password"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="registerPasswordConfirm">
+                    Confirm Password
+                </label>
+
+                <input
+                    id="registerPasswordConfirm"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="6"
+                    placeholder="Confirm your password"
+                    required
+                >
+            </div>
+
+            <button type="submit" id="registerBtn">
+                Create Account
+            </button>
+
+        </form>
+
+        <div class="switch">
+            Already have an account?
+            <button type="button" id="showLogin">
+                Sign In
+            </button>
+        </div>
+
+    </section>
+
+</div>
+
+
+<!-- IMPORTANT: API client -->
+<script src="/js/api.js"></script>
+
+<script>
+
+(function () {
+
+    const loginSection =
+        document.getElementById("loginSection");
+
+    const registerSection =
+        document.getElementById("registerSection");
+
+
+    const loginMessage =
+        document.getElementById("loginMessage");
+
+    const registerMessage =
+        document.getElementById("registerMessage");
+
+
+    function showMessage(element, message, type) {
+
+        element.textContent = message;
+
+        element.className =
+            "message " + type;
+    }
+
+
+    function clearMessage(element) {
+
+        element.textContent = "";
+
+        element.className = "message";
+    }
+
+
+    function showRegisterPage() {
+
+        clearMessage(loginMessage);
+
+        clearMessage(registerMessage);
+
+        loginSection.classList.add("hidden");
+
+        registerSection.classList.remove("hidden");
+
+        document
+            .getElementById("registerName")
+            .focus();
+    }
+
+
+    function showLoginPage() {
+
+        clearMessage(loginMessage);
+
+        clearMessage(registerMessage);
+
+        registerSection.classList.add("hidden");
+
+        loginSection.classList.remove("hidden");
+
+        document
+            .getElementById("loginEmail")
+            .focus();
+    }
+
+
+    document
+        .getElementById("showRegister")
+        .addEventListener(
+            "click",
+            showRegisterPage
         );
-        window.location.href = "index.html";
-      } catch (err) {
-        error.textContent = err.message;
-        error.classList.remove("hidden");
-        btn.textContent = "Sign In";
-        btn.disabled = false;
-      }
-    });
-  </script>
+
+
+    document
+        .getElementById("showLogin")
+        .addEventListener(
+            "click",
+            showLoginPage
+        );
+
+
+    // ==============================
+    // LOGIN
+    // ==============================
+
+    document
+        .getElementById("loginForm")
+        .addEventListener("submit", async function (event) {
+
+            event.preventDefault();
+
+            const btn =
+                document.getElementById("loginBtn");
+
+            const email =
+                document
+                    .getElementById("loginEmail")
+                    .value
+                    .trim();
+
+            const password =
+                document
+                    .getElementById("loginPassword")
+                    .value;
+
+
+            clearMessage(loginMessage);
+
+            btn.disabled = true;
+
+            btn.textContent = "Signing in...";
+
+
+            try {
+
+                await login(
+                    email,
+                    password
+                );
+
+
+                showMessage(
+                    loginMessage,
+                    "Login successful. Opening ResearchGPT...",
+                    "success"
+                );
+
+
+                // Give localStorage a moment to update.
+                setTimeout(function () {
+
+                    window.location.href = "/";
+
+                }, 250);
+
+
+            } catch (error) {
+
+                console.error(
+                    "Login error:",
+                    error
+                );
+
+
+                showMessage(
+                    loginMessage,
+                    error.message ||
+                    "Incorrect email or password.",
+                    "error"
+                );
+
+
+                btn.disabled = false;
+
+                btn.textContent = "Sign In";
+            }
+
+        });
+
+
+    // ==============================
+    // REGISTER
+    // ==============================
+
+    document
+        .getElementById("registerForm")
+        .addEventListener("submit", async function (event) {
+
+            event.preventDefault();
+
+
+            const btn =
+                document.getElementById("registerBtn");
+
+
+            const name =
+                document
+                    .getElementById("registerName")
+                    .value
+                    .trim();
+
+
+            const email =
+                document
+                    .getElementById("registerEmail")
+                    .value
+                    .trim();
+
+
+            const password =
+                document
+                    .getElementById("registerPassword")
+                    .value;
+
+
+            const confirmPassword =
+                document
+                    .getElementById("registerPasswordConfirm")
+                    .value;
+
+
+            clearMessage(registerMessage);
+
+
+            if (password.length < 6) {
+
+                showMessage(
+                    registerMessage,
+                    "Password must contain at least 6 characters.",
+                    "error"
+                );
+
+                return;
+            }
+
+
+            if (password !== confirmPassword) {
+
+                showMessage(
+                    registerMessage,
+                    "Passwords do not match.",
+                    "error"
+                );
+
+                return;
+            }
+
+
+            btn.disabled = true;
+
+            btn.textContent = "Creating account...";
+
+
+            try {
+
+                // Create account
+                await register(
+                    email,
+                    name || null,
+                    password
+                );
+
+
+                // Immediately authenticate the new account.
+                await login(
+                    email,
+                    password
+                );
+
+
+                showMessage(
+                    registerMessage,
+                    "Account created successfully. Opening ResearchGPT...",
+                    "success"
+                );
+
+
+                setTimeout(function () {
+
+                    window.location.href = "/";
+
+                }, 250);
+
+
+            } catch (error) {
+
+                console.error(
+                    "Registration error:",
+                    error
+                );
+
+
+                showMessage(
+                    registerMessage,
+                    error.message ||
+                    "Unable to create account.",
+                    "error"
+                );
+
+
+                btn.disabled = false;
+
+                btn.textContent = "Create Account";
+            }
+
+        });
+
+})();
+
+</script>
+
 </body>
 </html>
