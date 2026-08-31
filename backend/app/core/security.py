@@ -1,44 +1,64 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import base64
 import hashlib
+import hmac
+import os
 
 from jose import jwt
-from passlib.context import CryptContext
 
-from app.core.config import settings
+
+# ============================================================
+# JWT CONFIGURATION
+# ============================================================
+
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "paperaxiom-secret-key-change-in-production-2026"
+)
+
+ALGORITHM = "HS256"
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 
 # ============================================================
 # PASSWORD HASHING
 # ============================================================
-#
-# bcrypt has a 72-byte password limitation.
-# We SHA-256 pre-hash passwords before sending them to bcrypt.
-#
-# This allows passwords of any reasonable length while still
-# using bcrypt for the final password hash.
-#
-# Verification also supports OLD bcrypt hashes created before
-# this fix, so existing users are not broken.
-# ============================================================
 
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-)
+PBKDF2_ITERATIONS = 310000
+SALT_LENGTH = 16
 
 
-def _prepare_password(password: str) -> str:
+def get_password_hash(password: str) -> str:
     """
-    Convert the password into a fixed-length SHA-256 hex digest
-    before bcrypt processing.
+    Secure password hashing using PBKDF2-HMAC-SHA256.
 
-    SHA-256 hex digest = 64 ASCII characters,
-    safely below bcrypt's 72-byte limit.
+    This does not use bcrypt and therefore avoids the bcrypt
+    72-byte password limitation and bcrypt backend problems.
     """
-    return hashlib.sha256(
-        password.encode("utf-8")
-    ).hexdigest()
+
+    if not isinstance(password, str):
+        raise TypeError("Password must be a string")
+
+    password_bytes = password.encode("utf-8")
+
+    salt = os.urandom(SALT_LENGTH)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password_bytes,
+        salt,
+        PBKDF2_ITERATIONS,
+    )
+
+    salt_b64 = base64.urlsafe_b64encode(salt).decode("ascii")
+    hash_b64 = base64.urlsafe_b64encode(password_hash).decode("ascii")
+
+    return (
+        f"pbkdf2_sha256${PBKDF2_ITERATIONS}"
+        f"${salt_b64}${hash_b64}"
+    )
 
 
 def verify_password(
@@ -46,68 +66,52 @@ def verify_password(
     hashed_password: str,
 ) -> bool:
     """
-    Verify a password.
-
-    First checks the new SHA-256 + bcrypt format.
-    Then falls back to the old direct-bcrypt format so
-    previously registered users continue to work.
+    Verify a PBKDF2-SHA256 password hash.
     """
 
-    # New password format
+    if not plain_password or not hashed_password:
+        return False
+
     try:
-        if pwd_context.verify(
-            _prepare_password(plain_password),
-            hashed_password,
-        ):
-            return True
-    except Exception:
-        pass
+        parts = hashed_password.split("$")
 
-    # Backward compatibility for existing users
-    # whose passwords were hashed directly with bcrypt.
-    try:
-        if len(plain_password.encode("utf-8")) <= 72:
-            return pwd_context.verify(
-                plain_password,
-                hashed_password,
-            )
-    except Exception:
-        pass
+        if len(parts) != 4:
+            return False
 
-    return False
+        algorithm = parts[0]
+        iterations = int(parts[1])
+        salt = base64.urlsafe_b64decode(parts[2].encode("ascii"))
+        stored_hash = base64.urlsafe_b64decode(
+            parts[3].encode("ascii")
+        )
 
+        if algorithm != "pbkdf2_sha256":
+            return False
 
-def get_password_hash(password: str) -> str:
-    """
-    Create a bcrypt hash from the SHA-256-prepared password.
-    """
-    return pwd_context.hash(
-        _prepare_password(password)
-    )
+        calculated_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode("utf-8"),
+            salt,
+            iterations,
+        )
 
+        return hmac.compare_digest(
+            calculated_hash,
+            stored_hash,
+        )
 
-# ============================================================
-# JWT CONFIGURATION
-# ============================================================
-
-SECRET_KEY = "paperaxiom-secret-key-change-in-production-2026"
-ALGORITHM = "HS256"
-
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+    except (ValueError, TypeError, UnicodeDecodeError):
+        return False
 
 
 # ============================================================
-# ACCESS TOKEN
+# JWT TOKEN
 # ============================================================
 
 def create_access_token(
     data: dict,
     expires_delta: Optional[timedelta] = None,
 ):
-    """
-    Create a JWT access token.
-    """
-
     to_encode = data.copy()
 
     if expires_delta:
@@ -117,11 +121,7 @@ def create_access_token(
             minutes=ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
-    to_encode.update(
-        {
-            "exp": expire,
-        }
-    )
+    to_encode.update({"exp": expire})
 
     encoded_jwt = jwt.encode(
         to_encode,
