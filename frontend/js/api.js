@@ -13,33 +13,37 @@ const API_BASE = "/api/v1";
    ============================================================ */
 
 function getToken() {
-    return (
-        localStorage.getItem("token") ||
-        localStorage.getItem("access_token") ||
-        sessionStorage.getItem("access_token") ||
-        ""
-    );
+    return localStorage.getItem("paperaxiom_token") || "";
 }
 
 
 function setToken(token) {
     if (!token || typeof token !== "string") {
-        console.error("Invalid authentication token received.");
+        console.error("Invalid authentication token.");
         return false;
     }
 
-    localStorage.setItem("token", token);
-    localStorage.setItem("access_token", token);
-    sessionStorage.setItem("access_token", token);
-
+    localStorage.setItem("paperaxiom_token", token);
     return true;
 }
 
 
 function clearToken() {
+    localStorage.removeItem("paperaxiom_token");
+}
+
+
+/* -------------------- LOGOUT -------------------- */
+
+function logout() {
+    clearToken();
+
+    // Remove any legacy authentication values.
     localStorage.removeItem("token");
     localStorage.removeItem("access_token");
     sessionStorage.removeItem("access_token");
+
+    window.location.href = "/login.html";
 }
 
 
@@ -281,8 +285,20 @@ async function login(
     }
 
 
-    setToken(
-        data.access_token
+    if (!data || !data.access_token) {
+        throw new Error(
+            "Login succeeded but no access token was returned."
+        );
+    }
+
+    if (!setToken(data.access_token)) {
+        throw new Error(
+            "Unable to save authentication session."
+        );
+    }
+
+    console.log(
+        "LOGIN_SUCCESS_TOKEN_SAVED"
     );
 
 
@@ -1055,6 +1071,9 @@ window.setToken =
 
 window.clearToken =
     clearToken;
+
+window.logout =
+    logout;
 
 window.apiRequest =
     apiRequest;

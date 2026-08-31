@@ -1411,6 +1411,20 @@
                                 Researcher
                             </div>
 
+                            <button
+                                type="button"
+                                id="logoutButton"
+                                class="
+                                    mt-1
+                                    text-[10px]
+                                    font-semibold
+                                    text-red-600
+                                    hover:text-red-700
+                                "
+                            >
+                                Logout
+                            </button>
+
                         </div>
 
                     </div>
@@ -1495,3 +1509,22 @@
 </body>
 
 </html>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const logoutButton = document.getElementById("logoutButton");
+
+    if (logoutButton) {
+        logoutButton.addEventListener("click", function () {
+            if (typeof window.logout === "function") {
+                window.logout();
+            } else {
+                localStorage.removeItem("paperaxiom_token");
+                localStorage.removeItem("token");
+                localStorage.removeItem("access_token");
+                sessionStorage.removeItem("access_token");
+                window.location.href = "/login.html";
+            }
+        });
+    }
+});
+</script>
