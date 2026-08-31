@@ -23,12 +23,16 @@ function getToken() {
 
 
 function setToken(token) {
-    if (!token) {
-        return;
+    if (!token || typeof token !== "string") {
+        console.error("Invalid authentication token received.");
+        return false;
     }
 
     localStorage.setItem("token", token);
     localStorage.setItem("access_token", token);
+    sessionStorage.setItem("access_token", token);
+
+    return true;
 }
 
 
