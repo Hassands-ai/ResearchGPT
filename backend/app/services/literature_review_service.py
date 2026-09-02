@@ -14,7 +14,7 @@ from app.services.chat_service import (
 
 class LiteratureReviewService:
     """
-    ResearchGPT / PaperAxiom
+    ResearchGPT / ResearchGPT
     Evidence-grounded academic literature review service.
 
     Pipeline

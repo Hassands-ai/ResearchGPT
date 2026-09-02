@@ -11,7 +11,7 @@ from app.services.chat_service import chat_service
 
 class PaperWriteupService:
     """
-    PaperAxiom Paper Write-up Service.
+    ResearchGPT Paper Write-up Service.
 
     Generates concise academic sections from selected uploaded
     research papers.
@@ -20,7 +20,7 @@ class PaperWriteupService:
         Uploaded papers / retrieved evidence
 
     Generation:
-        Existing PaperAxiom ChatService / configured LLM
+        Existing ResearchGPT ChatService / configured LLM
 
     Supported write-up types:
         - abstract
@@ -36,7 +36,7 @@ class PaperWriteupService:
         - fast
         - evidence-grounded
         - reusable
-        - compatible with existing PaperAxiom architecture
+        - compatible with existing ResearchGPT architecture
     """
 
     MAX_PAPERS = 10
@@ -625,7 +625,7 @@ class PaperWriteupService:
         )
 
         return f"""
-You are PaperAxiom, an academic research-writing assistant.
+You are ResearchGPT, an academic research-writing assistant.
 
 Generate a high-quality academic {section} using the supplied
 evidence from uploaded research papers.

@@ -1,7 +1,7 @@
 "use strict";
 
 /* ============================================================
-   PaperAxiom API Client
+   ResearchGPT API Client
    Frontend <-> FastAPI bridge
    ============================================================ */
 
@@ -13,7 +13,15 @@ const API_BASE = "/api/v1";
    ============================================================ */
 
 function getToken() {
-    return localStorage.getItem("paperaxiom_token") || "";
+    return (
+        localStorage.getItem("researchgpt_token") ||
+        localStorage.getItem("paperaxiom_token") ||
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("token") ||
+        sessionStorage.getItem("researchgpt_token") ||
+        sessionStorage.getItem("access_token") ||
+        ""
+    );
 }
 
 
@@ -23,33 +31,34 @@ function setToken(token) {
         return false;
     }
 
+    localStorage.setItem("researchgpt_token", token);
     localStorage.setItem("paperaxiom_token", token);
+    localStorage.setItem("access_token", token);
+    localStorage.setItem("token", token);
+
+    sessionStorage.setItem("researchgpt_token", token);
+    sessionStorage.setItem("access_token", token);
+
     return true;
 }
 
 
 function clearToken() {
+    localStorage.removeItem("researchgpt_token");
     localStorage.removeItem("paperaxiom_token");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("token");
+
+    sessionStorage.removeItem("researchgpt_token");
+    sessionStorage.removeItem("access_token");
 }
 
-
-/* -------------------- LOGOUT -------------------- */
 
 function logout() {
     clearToken();
-
-    // Remove any legacy authentication values.
-    localStorage.removeItem("token");
-    localStorage.removeItem("access_token");
-    sessionStorage.removeItem("access_token");
-
     window.location.href = "/login.html";
 }
 
-
-/* ============================================================
-   API REQUEST
-   ============================================================ */
 
 async function apiRequest(endpoint, options = {}) {
 
@@ -102,12 +111,12 @@ async function apiRequest(endpoint, options = {}) {
     } catch (error) {
 
         console.error(
-            "PaperAxiom API connection error:",
+            "ResearchGPT API connection error:",
             error
         );
 
         throw new Error(
-            "Unable to connect to PaperAxiom backend. " +
+            "Unable to connect to ResearchGPT backend. " +
             "Make sure FastAPI is running on port 8000."
         );
     }
@@ -1159,7 +1168,7 @@ window.normalizePaperIds =
    ============================================================ */
 
 console.log(
-    "PaperAxiom API loaded successfully."
+    "ResearchGPT API loaded successfully."
 );
 
 console.log(

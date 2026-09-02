@@ -8,12 +8,12 @@ from app.core.config import settings
 # check_same_thread=False allows SQLite to work correctly with FastAPI.
 connect_args = {}
 
-if settings.DATABASE_URL.startswith("sqlite"):
+if settings.database_url_resolved.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    settings.database_url_resolved,
     connect_args=connect_args,
     pool_pre_ping=True,
 )

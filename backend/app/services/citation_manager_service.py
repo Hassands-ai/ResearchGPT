@@ -12,7 +12,7 @@ from app.services.multi_document_service import (
 
 class CitationManagerService:
     """
-    PaperAxiom Citation Manager.
+    ResearchGPT Citation Manager.
 
     Responsibilities:
         1. Retrieve bibliographic and research evidence.
@@ -717,7 +717,7 @@ class CitationManagerService:
         )
 
         prompt = f"""
-You are PaperAxiom, an expert academic research
+You are ResearchGPT, an expert academic research
 assistant and citation specialist.
 
 Analyze ONE research paper using the supplied evidence.

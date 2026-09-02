@@ -9,7 +9,7 @@ import re
 
 class ChatService:
     """
-    PaperAxiom AI Research Chat Service
+    ResearchGPT AI Research Chat Service
 
     Main workflow:
 
@@ -492,7 +492,7 @@ class ChatService:
         if not self.api_keys:
 
             print(
-                "PaperAxiom Chat | "
+                "ResearchGPT Chat | "
                 "No OpenRouter API keys configured."
             )
 
@@ -501,7 +501,7 @@ class ChatService:
         if not self.models:
 
             print(
-                "PaperAxiom Chat | "
+                "ResearchGPT Chat | "
                 "No OpenRouter models configured."
             )
 
@@ -519,7 +519,7 @@ class ChatService:
                 try:
 
                     print(
-                        "PaperAxiom Chat | "
+                        "ResearchGPT Chat | "
                         f"Generating with model: {model}"
                     )
 
@@ -531,7 +531,7 @@ class ChatService:
                             {
                                 "role": "system",
                                 "content": """
-You are PaperAxiom, an expert academic research assistant.
+You are ResearchGPT, an expert academic research assistant.
 
 Your task is to help a researcher understand and analyze
 their uploaded research papers.
@@ -666,7 +666,7 @@ IMPORTANT RESPONSE RULES:
                     if cleaned:
 
                         print(
-                            "PaperAxiom Chat | "
+                            "ResearchGPT Chat | "
                             f"Success with model: {model}"
                         )
 
@@ -677,7 +677,7 @@ IMPORTANT RESPONSE RULES:
                     last_error = exc
 
                     print(
-                        "PaperAxiom Chat | "
+                        "ResearchGPT Chat | "
                         f"Failed → model: {model} | "
                         f"error: {exc}"
                     )
@@ -686,7 +686,7 @@ IMPORTANT RESPONSE RULES:
 
         if last_error:
             print(
-                "PaperAxiom Chat | "
+                "ResearchGPT Chat | "
                 f"All model attempts failed: {last_error}"
             )
 
@@ -727,7 +727,7 @@ IMPORTANT RESPONSE RULES:
         )
 
         print(
-            "PaperAxiom Chat | "
+            "ResearchGPT Chat | "
             f"Question: {question}"
         )
 
@@ -746,7 +746,7 @@ IMPORTANT RESPONSE RULES:
         except Exception as exc:
 
             print(
-                "PaperAxiom Chat | "
+                "ResearchGPT Chat | "
                 f"Embedding failed: {exc}"
             )
 
@@ -774,7 +774,7 @@ IMPORTANT RESPONSE RULES:
         except Exception as exc:
 
             print(
-                "PaperAxiom Chat | "
+                "ResearchGPT Chat | "
                 f"Retrieval failed: {exc}"
             )
 

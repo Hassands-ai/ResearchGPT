@@ -1,41 +1,46 @@
 # ResearchGPT Backend Dependencies
 
+# FastAPI
 fastapi
 uvicorn[standard]
 python-multipart
 
+# Configuration / Validation
 pydantic
 pydantic-settings
+python-dotenv
+email-validator==2.2.0
 
+# Database
 SQLAlchemy
 psycopg2-binary
 
+# Authentication
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
 
+# HTTP / API
 httpx
 requests
+openai
 
+# PDF Processing
 pypdf
 
-sentence-transformers==3.0.1
-transformers==4.41.2
+# AI / Embeddings
+sentence-transformers==5.7.0
+transformers==5.15.0
 
-
+# Vector Database
 qdrant-client
+
+# Object Storage
 minio
+
+# Cache
 redis
 
+# Machine Learning / Numerical Computing
 numpy
 scikit-learn
-
-python-dotenv
-torch==2.3.1
-
-openai
-
-openai
-
-# Email validation
-email-validator==2.2.0

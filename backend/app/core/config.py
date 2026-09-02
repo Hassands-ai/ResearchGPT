@@ -1,28 +1,45 @@
 from typing import List
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
 
-    # ============================================================
-    # PROJECT
-    # ============================================================
-
-    PROJECT_NAME: str = "PaperAxiom"
+    PROJECT_NAME: str = "ResearchGPT"
     API_V1_STR: str = "/api/v1"
-
 
     # ============================================================
     # DATABASE
     # ============================================================
-    #
-    # SQLite is used for the Render Free deployment.
-    # This avoids requiring a paid PostgreSQL service.
-    #
 
-    DATABASE_URL: str = "sqlite:///./paperaxiom.db"
+    DATABASE_URL: str = ""
 
+    POSTGRES_USER: str = "paperaxiom"
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_DB: str = "paperaxiom"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+
+    @property
+    def database_url_resolved(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+
+        return (
+            f"postgresql://{self.POSTGRES_USER}:"
+            f"{self.POSTGRES_PASSWORD}@"
+            f"{self.POSTGRES_HOST}:"
+            f"{self.POSTGRES_PORT}/"
+            f"{self.POSTGRES_DB}"
+        )
+
+    # ============================================================
+    # QDRANT
+    # ============================================================
+
+    QDRANT_URL: str = ""
+    QDRANT_API_KEY: str = ""
+    QDRANT_HOST: str = "localhost"
+    QDRANT_PORT: int = 6333
 
     # ============================================================
     # MINIO
@@ -30,17 +47,8 @@ class Settings(BaseSettings):
 
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "paperaxiom"
-    MINIO_SECRET_KEY: str = "paperaxiom_secret"
+    MINIO_SECRET_KEY: str = ""
     MINIO_BUCKET: str = "papers"
-
-
-    # ============================================================
-    # QDRANT
-    # ============================================================
-
-    QDRANT_HOST: str = "localhost"
-    QDRANT_PORT: int = 6333
-
 
     # ============================================================
     # REDIS
@@ -49,49 +57,29 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
 
-
     # ============================================================
     # OPENROUTER
     # ============================================================
 
     OPENROUTER_API_KEYS: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODELS: str = "meta-llama/llama-3.1-8b-instruct"
-
-
-    # ============================================================
-    # HELPERS
-    # ============================================================
+    OPENROUTER_MODELS: str = "qwen/qwen3-14b:free,openrouter/free"
 
     @property
     def api_keys_list(self) -> List[str]:
-        if not self.OPENROUTER_API_KEYS:
-            return []
-
         return [
             key.strip()
             for key in self.OPENROUTER_API_KEYS.split(",")
             if key.strip()
         ]
 
-
     @property
     def models_list(self) -> List[str]:
-        if not self.OPENROUTER_MODELS:
-            return [
-                "meta-llama/llama-3.1-8b-instruct"
-            ]
-
         return [
             model.strip()
             for model in self.OPENROUTER_MODELS.split(",")
             if model.strip()
-        ]
-
-
-    # ============================================================
-    # ENVIRONMENT CONFIGURATION
-    # ============================================================
+        ] or ["openrouter/free"]
 
     model_config = SettingsConfigDict(
         env_file=".env",

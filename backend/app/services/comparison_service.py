@@ -13,7 +13,7 @@ from app.services.chat_service import (
 
 class ComparisonService:
     """
-    ResearchGPT / PaperAxiom
+    ResearchGPT / ResearchGPT
     Academic Research Paper Comparison Service.
 
     Purpose
