@@ -1,56 +1,96 @@
+import requests
 from typing import List
-from threading import Lock
+from app.core.config import settings
 
 
 class EmbeddingService:
     """
-    Lazy-loading embedding service.
+    Lightweight remote embedding service.
 
-    The SentenceTransformer model is NOT loaded when FastAPI starts.
-    It is loaded only when embed_texts() or embed_query() is called.
-    This keeps Render Free startup memory usage low.
+    Embeddings are generated through OpenRouter instead of loading
+    SentenceTransformer/PyTorch locally. This keeps the Render
+    Free instance below its 512 MB memory limit.
     """
 
     def __init__(self):
-        self.device = "cpu"
-        self.model = None
-        self._lock = Lock()
+        self.base_url = settings.OPENROUTER_BASE_URL.rstrip("/")
+        self.model = "qwen/qwen3-embedding-8b"
+        self.dimension = 1024
 
-    def _load_model(self):
-        """Load the embedding model only when it is actually needed."""
-        if self.model is None:
-            with self._lock:
-                if self.model is None:
-                    from sentence_transformers import SentenceTransformer
+    def _headers(self):
+        api_keys = settings.api_keys_list
 
-                    self.model = SentenceTransformer(
-                        "all-MiniLM-L6-v2",
-                        device=self.device,
-                    )
+        if not api_keys:
+            raise RuntimeError(
+                "OPENROUTER_API_KEYS is not configured."
+            )
 
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        self._load_model()
+        return {
+            "Authorization": f"Bearer {api_keys[0]}",
+            "Content-Type": "application/json",
+        }
 
-        embeddings = self.model.encode(
-            texts,
-            show_progress_bar=False,
-            device=self.device,
+    def _embed(self, inputs):
+        url = f"{self.base_url}/embeddings"
+
+        response = requests.post(
+            url,
+            headers=self._headers(),
+            json={
+                "model": self.model,
+                "input": inputs,
+            },
+            timeout=120,
         )
 
-        return embeddings.tolist()
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"OpenRouter embedding request failed "
+                f"({response.status_code}): {response.text[:1000]}"
+            )
 
-    def embed_query(self, query: str) -> List[float]:
-        self._load_model()
+        data = response.json()
 
-        embedding = self.model.encode(
-            [query],
-            show_progress_bar=False,
-            device=self.device,
-        )[0]
+        if "data" not in data:
+            raise RuntimeError(
+                f"Invalid embedding response: {data}"
+            )
 
-        return embedding.tolist()
+        embeddings = sorted(
+            data["data"],
+            key=lambda item: item["index"]
+        )
+
+        result = [
+            item["embedding"]
+            for item in embeddings
+        ]
+
+        if not result:
+            raise RuntimeError(
+                "OpenRouter returned no embeddings."
+            )
+
+        return result
+
+    def embed_texts(
+        self,
+        texts: List[str]
+    ) -> List[List[float]]:
+
+        if not texts:
+            return []
+
+        return self._embed(texts)
+
+    def embed_query(
+        self,
+        query: str
+    ) -> List[float]:
+
+        result = self._embed([query])
+
+        return result[0]
 
 
-# Lightweight object creation.
-# The actual AI model is NOT loaded here.
 embedding_service = EmbeddingService()

@@ -13,43 +13,85 @@ import uuid
 
 
 class QdrantService:
-    """
-    Lazy-loading Qdrant service.
 
-    Qdrant is NOT contacted when FastAPI starts.
-    The connection is created only when an operation actually needs Qdrant.
-    """
+    VECTOR_SIZE = 4096
 
     def __init__(self):
-        self.client = None
-        self.collection_name = "papers"
 
-    def _get_client(self):
-        """Create the Qdrant client only when it is actually needed."""
-        if self.client is None:
+        if settings.QDRANT_URL:
+            self.client = QdrantClient(
+                url=settings.QDRANT_URL,
+                api_key=settings.QDRANT_API_KEY,
+                check_compatibility=False,
+            )
+        else:
             self.client = QdrantClient(
                 host=settings.QDRANT_HOST,
                 port=settings.QDRANT_PORT,
                 check_compatibility=False,
             )
 
-        return self.client
+        self.collection_name = "papers"
+
+        self._ensure_collection()
 
     def _ensure_collection(self):
-        """Create the papers collection if it does not already exist."""
-        client = self._get_client()
 
-        collections = client.get_collections().collections
-        exists = any(
-            c.name == self.collection_name
-            for c in collections
+        collections = self.client.get_collections().collections
+
+        existing = next(
+            (
+                collection
+                for collection in collections
+                if collection.name == self.collection_name
+            ),
+            None,
         )
 
-        if not exists:
-            client.create_collection(
+        if existing is None:
+
+            self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(
-                    size=384,
+                    size=self.VECTOR_SIZE,
+                    distance=Distance.COSINE,
+                ),
+            )
+
+            return
+
+        # Check existing vector dimension.
+        info = self.client.get_collection(
+            self.collection_name
+        )
+
+        vectors_config = info.config.params.vectors
+
+        existing_size = None
+
+        if hasattr(vectors_config, "size"):
+            existing_size = vectors_config.size
+
+        if existing_size != self.VECTOR_SIZE:
+
+            print(
+                f"Qdrant collection dimension mismatch: "
+                f"{existing_size} != {self.VECTOR_SIZE}"
+            )
+
+            print(
+                "Recreating collection with "
+                f"{self.VECTOR_SIZE}-dimensional vectors."
+            )
+
+            self.client.delete_collection(
+                collection_name=self.collection_name
+            )
+
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(
+                    size=self.VECTOR_SIZE,
                     distance=Distance.COSINE,
                 ),
             )
@@ -60,15 +102,25 @@ class QdrantService:
         chunks: List[str],
         embeddings: List[List[float]],
     ):
-        self._ensure_collection()
 
-        client = self._get_client()
+        if len(chunks) != len(embeddings):
+            raise ValueError(
+                "Chunks and embeddings count mismatch."
+            )
 
         points = []
 
         for i, (chunk, embedding) in enumerate(
             zip(chunks, embeddings)
         ):
+
+            if len(embedding) != self.VECTOR_SIZE:
+                raise ValueError(
+                    f"Invalid embedding dimension: "
+                    f"{len(embedding)}. "
+                    f"Expected {self.VECTOR_SIZE}."
+                )
+
             points.append(
                 PointStruct(
                     id=str(uuid.uuid4()),
@@ -81,10 +133,11 @@ class QdrantService:
                 )
             )
 
-        client.upsert(
-            collection_name=self.collection_name,
-            points=points,
-        )
+        if points:
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=points,
+            )
 
     def search(
         self,
@@ -93,23 +146,29 @@ class QdrantService:
         limit: int = 5,
     ) -> List[Dict]:
 
-        self._ensure_collection()
-
-        client = self._get_client()
+        if len(query_vector) != self.VECTOR_SIZE:
+            raise ValueError(
+                f"Invalid query embedding dimension: "
+                f"{len(query_vector)}. "
+                f"Expected {self.VECTOR_SIZE}."
+            )
 
         query_filter = None
 
         if paper_id is not None:
+
             query_filter = Filter(
                 must=[
                     FieldCondition(
                         key="paper_id",
-                        match=MatchValue(value=paper_id),
+                        match=MatchValue(
+                            value=paper_id
+                        ),
                     )
                 ]
             )
 
-        response = client.query_points(
+        response = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
             query_filter=query_filter,
@@ -126,6 +185,4 @@ class QdrantService:
         ]
 
 
-# Lightweight object creation.
-# No Qdrant connection is made here.
 qdrant_service = QdrantService()

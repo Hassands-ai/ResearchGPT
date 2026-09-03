@@ -29,8 +29,6 @@ openai
 pypdf
 
 # AI / Embeddings
-sentence-transformers==5.7.0
-transformers==5.15.0
 
 # Vector Database
 qdrant-client
@@ -44,3 +42,4 @@ redis
 # Machine Learning / Numerical Computing
 numpy
 scikit-learn
+requests
